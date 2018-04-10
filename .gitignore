@@ -1,0 +1,16 @@
+.cache
+.history
+#intelliJ
+.idea
+.DS_Store
+stacks-sync
+templates-sync
+stacks-to-delete.txt
+templates-to-delete.txt
+
+#S3 Event Handlers
+s3-event-handlers/project/project
+s3-event-handlers/project/target
+s3-event-handlers/target
+
+packaged.yaml
