@@ -30,7 +30,7 @@ object DeleteStackExecutor {
       } else {
         Bad(
           StackError(
-            s"Failed to delete stack: ${s3File.key}}. No stack by that stack name: ${config.stackName} exists!"))
+            s"Failed to delete stack: ${s3File.key}. No stack by that stack name: ${config.stackName} exists!"))
       }
     } catch {
       case e: Throwable =>
