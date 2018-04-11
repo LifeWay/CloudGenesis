@@ -6,7 +6,6 @@ version := "1.0"
 
 scalaVersion := "2.12.4"
 
-val scalacticVersion = "3.0.1"
 val awsVersion       = "1.11.303"
 
 libraryDependencies ++= Seq(
@@ -22,9 +21,10 @@ libraryDependencies ++= Seq(
   "org.apache.logging.log4j" % "log4j-core"                  % "2.8.2",
   "org.apache.logging.log4j" % "log4j-api"                   % "2.8.2",
   "org.apache.logging.log4j" % "log4j-slf4j-impl"            % "2.8.2",
-  "org.scalactic"            %% "scalactic"                  % scalacticVersion % Test,
-  "org.scalatest"            %% "scalatest"                  % scalacticVersion % Test
+  "com.lihaoyi"              %% "utest"                      % "0.6.4" % "test"
 )
+
+testFrameworks += new TestFramework("utest.runner.Framework")
 
 enablePlugins(JavaAppPackaging)
 

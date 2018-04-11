@@ -1,0 +1,55 @@
+package com.lifeway.cloudops.cloudformation
+
+import com.amazonaws.services.cloudformation.model._
+import org.scalactic.{Bad, Good}
+import utest._
+
+object DeleteStackExecutorTests extends TestSuite {
+  val tests = Tests {
+    val stackConfig = StackConfig("test-stack", "demo/test-template.yaml", None, None)
+    val s3File      = S3File("some-bucket", "test-stack.yaml", "some-version-id", DeletedEvent)
+
+    'goodIfSuccessful - {
+      val cfClient = new CloudFormationTestClient {
+        override def describeStacks(req: DescribeStacksRequest): DescribeStacksResult =
+          new DescribeStacksResult().withStacks(new Stack().withStackName("test-stack"))
+        override def deleteStack(deleteStackRequest: DeleteStackRequest): DeleteStackResult = new DeleteStackResult()
+      }
+      val result = DeleteStackExecutor.execute(cfClient, stackConfig, s3File)
+      assert(result == Good(()))
+    }
+
+    'badIfStackDeleteRequestFails - {
+      val cfClient = new CloudFormationTestClient {
+        override def describeStacks(req: DescribeStacksRequest): DescribeStacksResult =
+          new DescribeStacksResult().withStacks(new Stack().withStackName("test-stack"))
+
+        override def deleteStack(deleteStackRequest: DeleteStackRequest): DeleteStackResult =
+          throw new AmazonCloudFormationException("boom")
+      }
+      val result = DeleteStackExecutor.execute(cfClient, stackConfig, s3File)
+      assert(result == Bad(StackError(
+        "Failed to delete stack: test-stack.yaml due to: boom (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
+    }
+
+    'badIfNoStackByName - {
+      val cfClient = new CloudFormationTestClient {
+        override def describeStacks(req: DescribeStacksRequest): DescribeStacksResult =
+          throw new StackSetNotFoundException("no stack exists by this name")
+      }
+      val result = DeleteStackExecutor.execute(cfClient, stackConfig, s3File)
+      assert(result == Bad(StackError(
+        "Failed to delete stack: test-stack.yaml due to: no stack exists by this name (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
+    }
+
+    'badIfNoStackByNameNoException - {
+      val cfClient = new CloudFormationTestClient {
+        override def describeStacks(req: DescribeStacksRequest): DescribeStacksResult = new DescribeStacksResult()
+      }
+      val result = DeleteStackExecutor.execute(cfClient, stackConfig, s3File)
+      assert(
+        result == Bad(
+          StackError("Failed to delete stack: test-stack.yaml. No stack by that stack name: test-stack exists!")))
+    }
+  }
+}
