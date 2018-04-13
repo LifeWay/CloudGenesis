@@ -10,9 +10,6 @@ def lambda_handler(event, context):
         for rec in messageRecords['Records']:
             msg = build_slack_message(rec, event)
             send_to_slack(msg)
-            print('SUCCESS')
-            print(msg)
-
 
 def build_slack_message(record, event):
     #iterate through nested messages
@@ -36,10 +33,10 @@ def build_message(attachments, event):
     message = {
         'icon_emoji': ':cloud:',
         'username': 'cf-bot',
+        'channel': slack.CHANNEL,
         'text': 'Stack ERROR',
         'attachments': attachments
     }
-    # print(message)
     return message
 
 def build_attachment(rec):

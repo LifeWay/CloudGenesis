@@ -7,6 +7,10 @@ import boto3
 import re
 from itertools import groupby
 
+#
+# From: https://github.com/guardian/cf-notify
+#
+
 # Mapping CloudFormation status codes to colors for Slack message attachments
 # Status codes from http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-describing-stacks.html
 STATUS_COLORS = {
