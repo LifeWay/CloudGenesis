@@ -12,5 +12,13 @@ templates-to-delete.txt
 s3-event-handlers/project/project
 s3-event-handlers/project/target
 s3-event-handlers/target
+.ensime*
+ensime*
+.vscode*
+target/*
+*.iml
+pc.stdout.log
+node_modules/
 
 packaged.yaml
+*.pyc

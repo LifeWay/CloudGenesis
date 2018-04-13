@@ -1,0 +1,24 @@
+{  
+   "Records":[  
+      {  
+         "EventSource":"aws:sns",
+         "EventVersion":"1.0",
+         "EventSubscriptionArn":"arn:aws:sns:us-east-1:567419588983:cloudops-cf-automation-poc-with-iam-S3CreateUpdateEventsTopic-1HXGTVJZX0PQ2:4aa5d26a-d6a0-4fee-b145-37e6a3c4538b",
+         "Sns":{  
+            "Type":"Notification",
+            "MessageId":"f92b9da7-8999-5591-a21a-ce981268b603",
+            "TopicArn":"arn:aws:sns:us-east-1:567419588983:cloudops-cf-automation-poc-with-iam-S3CreateUpdateEventsTopic-1HXGTVJZX0PQ2",
+            "Subject":"Amazon S3 Notification",
+            "Message":"{\"Records\":[{\"eventVersion\":\"2.0\",\"eventSource\":\"aws:s3\",\"awsRegion\":\"us-east-1\",\"eventTime\":\"2018-04-05T03:36:17.129Z\",\"eventName\":\"ObjectCreated:Put\",\"userIdentity\":{\"principalId\":\"AWS:AIDA\"},\"requestParameters\":{\"sourceIPAddress\":\"69.243.222.40\"},\"responseElements\":{\"x-amz-request-id\":\"DE520F0497525162\",\"x-amz-id-2\":\"UVgS4o4rH0/fYRsf7uo64rnLiV0urTIvCvLCGOwvxu5Js+ZjB/ox+/R2ydiD0ttf3+BPBZF6Qb0=\"},\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"38bbf928-fea0-4b51-88ed-efb7d624af5d\",\"bucket\":{\"name\":\"cloudops-cf-automation-poc-with-iam-cfstack-bucket\",\"ownerIdentity\":{\"principalId\":\"A2O5DGVZ0QX78J\"},\"arn\":\"arn:aws:s3:::cloudops-cf-automation-poc-with-iam-cfstack-bucket\"},\"object\":{\"key\":\"stacks/ctp-sandbox.567419588983/contentplatform/demo-stack.yaml\",\"size\":233,\"eTag\":\"4648120682744f51ff159db5020d354c\",\"versionId\":\"k9Paj1zxU4GiaKhnAZb2kebv51.nZpK_\",\"sequencer\":\"005AC599B1180763F2\"}}}]}",
+            "Timestamp":"2018-04-05T03:36:17.180Z",
+            "SignatureVersion":"1",
+            "Signature":"UXeOYqY/z1qBc1TGchxqguVIFwAvF+aB7Db59Hc5aGlcgrNs+NTu6kN2df3fAPXO/B1unKb6ZineXwQOeuk38q4Vji/d51DYixHsxVUClcC9TA7SjJWtHlEclyZ+4FeCnhufKp4V29COsBTbFnPwsAjUKXgvKcPUtR5SnJxnQ3dfWiCwKrAIs6Kxx8eSNLZIfN4qMkn8kJhcg5YIHzBl63LQr5xaFkjjn9zybmaLsg06QENoIXDBGlDYW6ot2Llkva4VVTqdl8ODvADpdShnvXnH4Ju7rTIfiDJUF+YEhuGoLIrsR3nxYXTvxqgCdIxOlKclOHHeH543fmswjIRDPg==",
+            "SigningCertUrl":"https://sns.us-east-1.amazonaws.com/SimpleNotificationService-433026a4050d206028891664da859041.pem",
+            "UnsubscribeUrl":"https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:567419588983:cloudops-cf-automation-poc-with-iam-S3CreateUpdateEventsTopic-1HXGTVJZX0PQ2:4aa5d26a-d6a0-4fee-b145-37e6a3c4538b",
+            "MessageAttributes":{  
+
+            }
+         }
+      }
+   ]
+}

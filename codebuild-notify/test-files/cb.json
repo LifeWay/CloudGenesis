@@ -1,0 +1,22 @@
+{
+  "Records": [
+      {
+          "EventSource": "aws:sns",
+          "EventVersion": "1.0",
+          "EventSubscriptionArn": "arn:aws:sns:us-east-1:567419588983:cloudops-cf-automation-poc-with-iam-BuildStatusTopic-1HCUZCS8VRG3N:9d9f84d2-cb35-4917-afdd-789db88a32d6",
+          "Sns": {
+              "Type": "Notification",
+              "MessageId": "531ef127-ef41-54ab-950d-a26d1fc8aa92",
+              "TopicArn": "arn:aws:sns:us-east-1:567419588983:cloudops-cf-automation-poc-with-iam-BuildStatusTopic-1HCUZCS8VRG3N",
+              "Subject": null,
+              "Message": "{\"version\":\"0\",\"id\":\"c8fde5ed-a223-934e-08c7-d936ce8933c2\",\"detail-type\":\"CodeBuild Build State Change\",\"source\":\"aws.codebuild\",\"account\":\"567419588983\",\"time\":\"2018-04-13T17:52:04Z\",\"region\":\"us-east-1\",\"resources\":[\"arn:aws:codebuild:us-east-1:567419588983:build/cloudformation-automation-build:06a0a99b-5b08-46ff-9802-137c473b5098\"],\"detail\":{\"build-status\":\"IN_PROGRESS\",\"project-name\":\"cloudformation-automation-build\",\"build-id\":\"arn:aws:codebuild:us-east-1:567419588983:build/cloudformation-automation-build:06a0a99b-5b08-46ff-9802-137c473b5098\",\"additional-information\":{\"artifact\":{\"location\":\"\"},\"environment\":{\"image\":\"567419588983.dkr.ecr.us-east-1.amazonaws.com/codebuild/cloudformation-automation\",\"privileged-mode\":false,\"compute-type\":\"BUILD_GENERAL1_SMALL\",\"type\":\"LINUX_CONTAINER\",\"environment-variables\":[{\"name\":\"S3_BUCKET_NAME\",\"type\":\"PLAINTEXT\",\"value\":\"cloudops-cf-automation-poc-with-iam-cfstack-bucket\"}]},\"timeout-in-minutes\":60.0,\"build-complete\":false,\"initiator\":\"codepipeline/cloudformation-automation-pipeline\",\"build-start-time\":\"Apr 13, 2018 5:52:03 PM\",\"source\":{\"buildspec\":\"buildspec-sync.yml\",\"type\":\"CODEPIPELINE\"},\"source-version\":\"arn:aws:s3:::cloudops-gitrepo-sync-iam-buildartifactsbucket-pudxdadx7idp/cloudformation-autom/SourceZip/cjJPB5U.zip\"},\"current-phase\":\"SUBMITTED\",\"current-phase-context\":\"[]\",\"version\":\"1\"}}",
+              "Timestamp": "2018-04-13T17:52:09.707Z",
+              "SignatureVersion": "1",
+              "Signature": "cbVpGHW0S0/Mu1kN0j5JA3qngeNx0qP2UMNgfUd8yofNbzgVS8TXaqB/IFd0SudPr7OBQTAzGt5+hfILhXqicltaH5dHiOpXsUTc7j4wsRFR+jLR8x4pgWXYhM5oSjiScyf1IBKaWUlzCRXqgoijLCbOmpypxuWxuJ8x9sJOA4uk3/ryK/uDpYeJ6M3hCL82wUxkXqM4AxeiYsjtgzjKNbj9bCRE485Nof8+aXfiYyfFZopNNkNwKwMk/JgRRv/vMsF4aaY0l8TaNqUydhfC5VdeT2HB8Fm1PRpNFM+p1vy9RStUH7ZP3E22pUiU8gAN969bVIic0jmSxa6+cQRKkg==",
+              "SigningCertUrl": "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-433026a4050d206028891664da859041.pem",
+              "UnsubscribeUrl": "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:567419588983:cloudops-cf-automation-poc-with-iam-BuildStatusTopic-1HCUZCS8VRG3N:9d9f84d2-cb35-4917-afdd-789db88a32d6",
+              "MessageAttributes": {}
+          }
+      }
+  ]
+}

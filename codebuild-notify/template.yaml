@@ -1,0 +1,28 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  HookUrl:
+    Description: Slack webhook URL; see https://example.slack.com/apps/
+    Type: String
+    Default: "https://hooks.slack.com/services/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"
+  Channel:
+    Description: Channel name to post to (optional)
+    Type: String
+    Default: "cf-notifications-poc"
+
+Resources:
+  Handler:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs6.10
+      CodeUri: ./
+      MemorySize: 256
+      Timeout: 10
+      Policies: CloudWatchReadOnlyAccess
+      Environment:
+        Variables:
+          WEBHOOK: !Ref HookUrl
+          CHANNEL: !Ref Channel
