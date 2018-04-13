@@ -6,7 +6,7 @@ version := "1.0"
 
 scalaVersion := "2.12.4"
 
-val awsVersion       = "1.11.303"
+val awsVersion = "1.11.303"
 
 libraryDependencies ++= Seq(
   "com.amazonaws"            % "aws-lambda-java-core"        % "1.2.0",
@@ -15,6 +15,10 @@ libraryDependencies ++= Seq(
   "com.amazonaws"            % "aws-java-sdk-cloudformation" % awsVersion,
   "com.amazonaws"            % "aws-java-sdk-sts"            % awsVersion,
   "com.amazonaws"            % "aws-java-sdk-sns"            % awsVersion,
+  "com.amazonaws"            % "aws-lambda-java-log4j2"      % "1.1.0",
+  "org.apache.logging.log4j" % "log4j-core"                  % "2.8.2",
+  "org.apache.logging.log4j" % "log4j-api"                   % "2.8.2",
+  "org.apache.logging.log4j" % "log4j-slf4j-impl"            % "2.8.2",
   "org.scalactic"            %% "scalactic"                  % "3.0.5",
   "com.typesafe.akka"        %% "akka-actor"                 % "2.5.11",
   "io.circe"                 %% "circe-yaml"                 % "0.6.1",
@@ -25,6 +29,8 @@ libraryDependencies ++= Seq(
 )
 
 testFrameworks += new TestFramework("utest.runner.Framework")
+coverageMinimum := 97
+coverageFailOnMinimum := true
 
 enablePlugins(JavaAppPackaging)
 

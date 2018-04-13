@@ -21,6 +21,7 @@ import scala.concurrent.duration._
 import akka.pattern.after
 import com.lifeway.cloudops.cloudformation.Types.{IAMCapabilityEnabled, SNSArn}
 import org.scalactic.{Bad, Good, Or}
+import org.slf4j.LoggerFactory
 
 import scala.util.{Failure, Success, Try}
 
@@ -35,14 +36,19 @@ import scala.util.{Failure, Success, Try}
   * @param iam
   * @param snsARN
   */
+// $COVERAGE-OFF$
 class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem, iam: IAMCapabilityEnabled, snsARN: SNSArn)
     extends StackExecutor {
   override val execute: (AmazonCloudFormation, StackConfig, S3File) => Unit Or AutomationError = {
     CreateUpdateStackExecutor.execute()(actorSystem, iam, snsARN)
   }
 }
+// $COVERAGE-ON$
 
 object CreateUpdateStackExecutor {
+  val ChangeSetName = "cloudformation-automation"
+  val logger        = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.CreateUpdateStackExecutor")
+
   def execute(changeSetReady: (AmazonCloudFormation, ActorSystem) => (String, String) => Unit Or AutomationError =
                 (cf, as) => waitForChangeSetReady(cf, as),
               capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
@@ -60,7 +66,7 @@ object CreateUpdateStackExecutor {
 
     changeSetType(cfClient, config).fold(
       f => {
-        f.printStackTrace()
+        logger.error("Failed to determine change set type", f)
         Bad(
           StackError(
             s"Failed to create change set and execute it due to failure determining change set type: ${f.getMessage}"))
@@ -68,7 +74,7 @@ object CreateUpdateStackExecutor {
       s => {
         val changeSetReq = new CreateChangeSetRequest()
           .withCapabilities(capabilities(iam): _*)
-          .withChangeSetName("cloudformation-automation")
+          .withChangeSetName(ChangeSetName)
           .withChangeSetType(s)
           .withDescription(s"From CF Automation File: ${s3File.key}")
           .withTemplateURL(s"https://s3.amazonaws.com/${s3File.bucket}/templates/${config.template}")
@@ -85,7 +91,7 @@ object CreateUpdateStackExecutor {
           } yield cfClient.executeChangeSet(new ExecuteChangeSetRequest().withChangeSetName(changeSet.getId))
         } catch {
           case e: Throwable =>
-            e.printStackTrace()
+            logger.error(s"Failed to create change set and execute it for: ${s3File.key}.", e)
             Bad(StackError(s"Failed to create change set and execute it for: ${s3File.key}. Reason: ${e.getMessage}"))
         }
       }
@@ -115,7 +121,8 @@ object CreateUpdateStackExecutor {
       cfClient: AmazonCloudFormation,
       actorSystem: ActorSystem,
       maxRetries: Int = 100,
-      maxWaitTime: Duration = 5.minutes)(changeSet: String, stackFile: String): Unit Or AutomationError = {
+      maxWaitTime: Duration = 5.minutes,
+      retrySpeed: FiniteDuration = 3.seconds)(changeSetArn: String, stackFile: String): Unit Or AutomationError = {
 
     implicit val ec: ExecutionContext = actorSystem.dispatcher
     implicit val sch: Scheduler       = actorSystem.scheduler
@@ -125,7 +132,7 @@ object CreateUpdateStackExecutor {
     case class FailedException(msg: String) extends StatusException
 
     def checkStatus: Unit Or AutomationError = {
-      val status = cfClient.describeChangeSet(new DescribeChangeSetRequest().withChangeSetName(changeSet))
+      val status = cfClient.describeChangeSet(new DescribeChangeSetRequest().withChangeSetName(changeSetArn))
 
       ChangeSetStatus.fromValue(status.getStatus) match {
         case ChangeSetStatus.CREATE_PENDING | ChangeSetStatus.CREATE_IN_PROGRESS => throw PendingException
@@ -145,7 +152,7 @@ object CreateUpdateStackExecutor {
 
     //Retry to find final status for up to 5 minutes...
     try {
-      Await.result(retry(checkStatus, 3.seconds, maxRetries), maxWaitTime)
+      Await.result(retry(checkStatus, retrySpeed, maxRetries), maxWaitTime)
     } catch {
       case _: Throwable =>
         Bad(StackError(s"Failed to create change set due to timeout waiting for change set status: $stackFile"))

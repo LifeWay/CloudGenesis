@@ -10,6 +10,7 @@ import com.amazonaws.services.sns.{AmazonSNS, AmazonSNSClientBuilder}
 import org.scalactic.{Or, _}
 import org.scalactic.Accumulation._
 import com.lifeway.cloudops.cloudformation.Types._
+import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.util.Try
@@ -19,6 +20,7 @@ import scala.util.Try
   * Two Handlers defined - one for CreateUpdate and one for Delete. Therefore, this same package will be distributed
   * twice for two different lambdas, each with a different handler.
   */
+// $COVERAGE-OFF$
 class LambdaStackHandler {
 
   val stsClient: AWSSecurityTokenService              = AWSSecurityTokenServiceClientBuilder.defaultClient()
@@ -28,15 +30,15 @@ class LambdaStackHandler {
   val semanticStackNaming: SemanticStackNamingEnabled = sys.env.get("SEMANTIC_STACK_NAMING").forall(_.toBoolean)
   val snsExternalNotifyTopicArn: ExternalNotifySNSArn = sys.env.get("SNS_EXTERNAL_TOPIC_NOTIFY_ARN")
   val system                                          = ActorSystem("SchedulerSystem")
-  val eventProcessorOr: EventProcessor Or Every[AutomationError] = LambdaStackHandler.loadEventProcessor(
-    stsClient,
-    s3Client,
-    snsClient,
-    semanticStackNaming,
-    system,
-    iamCapabilities,
-    snsExternalNotifyTopicArn)
-  val handler = LambdaStackHandler.lambdaHandler(eventProcessorOr) _
+  val eventProcessorOr: EventProcessor Or Every[AutomationError] =
+    LambdaStackHandler.loadEventProcessor(varName => sys.env.get(varName))(stsClient,
+                                                                           s3Client,
+                                                                           snsClient,
+                                                                           semanticStackNaming,
+                                                                           system,
+                                                                           iamCapabilities,
+                                                                           snsExternalNotifyTopicArn)
+  val handler = LambdaStackHandler.lambdaHandler(eventProcessorOr, LambdaStackHandler.eventHandler) _
 
   /**
     * Given an SNS Event that should be wrapping an S3 message, process it and then transform the type system back
@@ -57,31 +59,40 @@ class LambdaStackHandler {
     * @param content
     */
   def deleteHandler(event: SNSEvent, content: Context): Unit = handler(DeletedEvent, event)
-
 }
+// $COVERAGE-ON$
 
 object LambdaStackHandler {
+  val logger = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.LambdaStackHandler")
 
   /**
     * Handles an SNSEvent based on the EventType and returns a response for AWS Lambda' Async invokes. Needs to return
     * Units (Java Voids) and throw exceptions for the purposes of AWS JVM Lambda.
     *
     * @param eventProcessorOr
+    * @param eventHandlerFun
     * @param eventType
     * @param event
     */
-  def lambdaHandler(eventProcessorOr: EventProcessor Or Every[AutomationError])(eventType: EventType,
-                                                                                event: SNSEvent): Unit =
+  def lambdaHandler(eventProcessorOr: EventProcessor Or Every[AutomationError],
+                    eventHandlerFun: (EventProcessor, EventType, SNSEvent) => Unit Or Every[AutomationError])(
+      eventType: EventType,
+      event: SNSEvent): Unit =
     (for {
       eventProcessor <- eventProcessorOr
-    } yield LambdaStackHandler.eventHandler(eventProcessor, eventType, event)).fold(
-      _ => (),
+      eventHandled   <- eventHandlerFun(eventProcessor, eventType, event)
+    } yield eventHandled).fold(
+      good => {
+        println("it was good!")
+        good
+      },
       everyBad => throw new Exception(everyBad.mkString("/n"))
     )
 
   /**
     * Loads the EventProcessor that is used for processing the events. This should be loaded on function cold start.
     *
+    * @param envFetch
     * @param stsClient
     * @param s3Client
     * @param snsClient
@@ -91,16 +102,17 @@ object LambdaStackHandler {
     * @param externalSNSArn
     * @return
     */
-  def loadEventProcessor(stsClient: AWSSecurityTokenService,
-                         s3Client: AmazonS3,
-                         snsClient: AmazonSNS,
-                         semanticStackNaming: SemanticStackNamingEnabled,
-                         system: ActorSystem,
-                         iamCapabilities: IAMCapabilityEnabled,
-                         externalSNSArn: ExternalNotifySNSArn): EventProcessor Or Every[AutomationError] = {
+  def loadEventProcessor(envFetch: String => Option[String])(
+      stsClient: AWSSecurityTokenService,
+      s3Client: AmazonS3,
+      snsClient: AmazonSNS,
+      semanticStackNaming: SemanticStackNamingEnabled,
+      system: ActorSystem,
+      iamCapabilities: IAMCapabilityEnabled,
+      externalSNSArn: ExternalNotifySNSArn): EventProcessor Or Every[AutomationError] = {
     val envVars: Option[(AssumeRoleName, SNSArn)] = for {
-      roleArn <- sys.env.get("IAM_ASSUME_ROLE_NAME").flatMap(x => if (x.isEmpty) None else Some(x))
-      snsArn  <- sys.env.get("CF_EVENTS_TOPIC_ARN").flatMap(x => if (x.isEmpty) None else Some(x))
+      roleArn <- envFetch("IAM_ASSUME_ROLE_NAME").flatMap(x => if (x.isEmpty) None else Some(x))
+      snsArn  <- envFetch("CF_EVENTS_TOPIC_ARN").flatMap(x => if (x.isEmpty) None else Some(x))
     } yield (roleArn, snsArn)
 
     (for {
@@ -145,7 +157,8 @@ object LambdaStackHandler {
     val processedResults: Seq[Unit Or Every[AutomationError] Or One[AutomationError]] = event.getRecords.asScala.map {
       sns =>
         val s3Event: S3EventNotification Or One[StackError] =
-          Or.from(Try(S3EventNotification.parseJson(sns.getSNS.getMessage))).badMap(x => One(StackError(x.getMessage)))
+          Or.from(Try(S3EventNotification.parseJson(sns.getSNS.getMessage)))
+            .badMap(x => One(StackError(x.getMessage)))
         val processed: Or[Or[Unit, Every[AutomationError]], One[AutomationError]] =
           s3Event.map(event => eventProcessor.processEvent(event, eventType))
         processed
