@@ -31,10 +31,18 @@ Parameters:
     Description: "The SNS arn to publish events to that contain the notice of change that is occurring by the automation. Leave empty if not used."
     Type: String
     Default: ""
+  HookUrl:
+    Description: Slack webhook URL; see https://example.slack.com/apps/
+    Type: String
+  Channel:
+    Description: Channel name to post to 
+    Type: String
+  EmailContact:
+    Description: Email to send unhandled errors
+    Type: String
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
-
 
 Resources:
   S3CreateUpdateEventsTopic:
@@ -136,24 +144,40 @@ Resources:
     Properties:
       DisplayName: "CF Automation: Pipeline Status"
       Subscription:
-        - Endpoint: "ryan.means@lifeway.com"
-          Protocol: "email-json"
+      - Endpoint:
+          Fn::GetAtt:
+          - CodeBuildStatusFunction
+          - Arn
+        Protocol: lambda
 
   ErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: "CF Automation: Errors"
       Subscription:
-        - Endpoint: "ryan.means@lifeway.com"
+      - Endpoint:
+          Fn::GetAtt:
+          - SNSDLQErrorFunction
+          - Arn
+        Protocol: lambda
+
+  SlackNotificationErrorsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "CF Automation: Errors"
+      Subscription:
+        - Endpoint: !Ref EmailContact
           Protocol: "email-json"
 
   CloudFormationEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF Automation: CF Events"
       Subscription:
-        - Endpoint: "ryan.means@lifeway.com"
-          Protocol: "email-json"
+      - Endpoint:
+          Fn::GetAtt:
+          - CFNotifyFunction
+          - Arn
+        Protocol: lambda
 
   CloudFormationEventsSNSPolicy:
     Type: AWS::SNS::TopicPolicy
@@ -170,6 +194,22 @@ Resources:
               AWS: !Ref AccountIDArns
             Action: sns:Publish
             Resource: !Ref CloudFormationEventsTopic
+
+  CodeBuildEventsSNSPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref BuildStatusTopic
+      PolicyDocument:
+        Id: S3TopicPolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: "PublishEvents"
+            Effect: Allow
+            Principal:
+              Service: "events.amazonaws.com"
+            Action: sns:Publish
+            Resource: !Ref BuildStatusTopic
 
   LambdaStackMgmtRole:
     Type: AWS::IAM::Role
@@ -287,6 +327,124 @@ Resources:
           Type: SNS
           Properties:
             Topic: !Ref S3DeleteEventsTopic
+            
+  CFNotifyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CFNotifyPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action:
+              - sns:Publish
+            Resource:
+              - !Ref SlackNotificationErrorsTopic
+          - Effect: Allow
+            Action:
+              - cloudformation:DescribeStackResources
+            Resource: '*'
+
+  CFNotifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Lambda function to post CF updates to Slack
+      Handler: lambda_notify.lambda_handler
+      Role: !GetAtt CFNotifyRole.Arn
+      CodeUri: ./cf-notify/cf-notify.zip
+      Runtime: python2.7
+      Timeout: 300
+      AutoPublishAlias: "live"
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref SlackNotificationErrorsTopic
+      Environment:
+        Variables:
+          WEBHOOK: !Ref HookUrl
+          CHANNEL: !Ref Channel
+
+  CFNotifyInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn:
+        Ref: CloudFormationEventsTopic
+
+  SNSDLQErrorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Lambda function to post SNS DLQ errors to Slack
+      Handler: sns_error.lambda_handler
+      Role: !GetAtt CFNotifyRole.Arn
+      CodeUri: ./sns-notify/sns-error.zip
+      Runtime: python2.7
+      Timeout: 300
+      AutoPublishAlias: "live"
+      Environment:
+        Variables:
+          WEBHOOK: !Ref HookUrl
+          CHANNEL: !Ref Channel
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref SlackNotificationErrorsTopic
+
+  SNSDLQErrorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: SNSDLQErrorFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn:
+        Ref: ErrorsTopic
+
+  CodeBuildStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Lambda function to post CodeBuild updates to Slack
+      Handler: index.handler
+      Role: !GetAtt CFNotifyRole.Arn
+      CodeUri: ./codebuild-notify/
+      Runtime: nodejs6.10
+      Timeout: 300
+      AutoPublishAlias: "live"
+      Environment:
+        Variables:
+          WEBHOOK: !Ref HookUrl
+          CHANNEL: !Ref Channel
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref SlackNotificationErrorsTopic
+        
+  CodeBuildErrorInvokePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        FunctionName:
+          Ref: CodeBuildStatusFunction
+        Action: lambda:InvokeFunction
+        Principal: sns.amazonaws.com
+        SourceArn:
+          Ref: BuildStatusTopic
 
 Outputs:
   S3Bucket:

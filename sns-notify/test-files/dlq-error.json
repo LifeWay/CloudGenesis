@@ -1,0 +1,25 @@
+{
+  "Records": [
+    {
+      "EventVersion": "1.0",
+      "EventSubscriptionArn": "arn:aws:sns:EXAMPLE",
+      "EventSource": "aws:sns",
+      "Sns": {
+        "Type" : "Notification",
+        "MessageId" : "d5322fdc-2168-5c97-a062-7ce3bdd4ee21",
+        "TopicArn" : "arn:aws:sns:us-east-1:12345:topic",
+        "Message" : "{\"Records\":[{\"EventSource\":\"aws:sns\",\"EventVersion\":\"1.0\",\"EventSubscriptionArn\":\"arn:aws:sns:us-east-1:12345:topic:4aa5d26a-d6a0-4fee-b145-37e6a3c4538b\",\"Sns\":{\"Type\":\"Notification\",\"MessageId\":\"f92b9da7-8999-5591-a21a-ce981268b603\",\"TopicArn\":\"arn:aws:sns:us-east-1:12345:topic\",\"Subject\":\"Amazon S3 Notification\",\"Message\":\"{\\\"Records\\\":[{\\\"eventVersion\\\":\\\"2.0\\\",\\\"eventSource\\\":\\\"aws:s3\\\",\\\"awsRegion\\\":\\\"us-east-1\\\",\\\"eventTime\\\":\\\"2018-04-05T03:36:17.129Z\\\",\\\"eventName\\\":\\\"ObjectCreated:Put\\\",\\\"userIdentity\\\":{\\\"principalId\\\":\\\"AWS:AIDA\\\"},\\\"requestParameters\\\":{\\\"sourceIPAddress\\\":\\\"69.243.222.40\\\"},\\\"responseElements\\\":{\\\"x-amz-request-id\\\":\\\"DE520F0497525162\\\",\\\"x-amz-id-2\\\":\\\"UVgS4o4rH0/fYRsf7uo64rnLiV0urTIvCvLCGOwvxu5Js+ZjB/ox+/R2ydiD0ttf3+BPBZF6Qb0=\\\"},\\\"s3\\\":{\\\"s3SchemaVersion\\\":\\\"1.0\\\",\\\"configurationId\\\":\\\"38bbf928-fea0-4b51-88ed-efb7d624af5d\\\",\\\"bucket\\\":{\\\"name\\\":\\\"bucket\\\",\\\"ownerIdentity\\\":{\\\"principalId\\\":\\\"A2O5DGVZ0QX78J\\\"},\\\"arn\\\":\\\"arn:aws:s3:::bucket\\\"},\\\"object\\\":{\\\"key\\\":\\\"stacks/demo.12345/demo-stack.yaml\\\",\\\"size\\\":233,\\\"eTag\\\":\\\"4648120682744f51ff159db5020d354c\\\",\\\"versionId\\\":\\\"k9Paj1zxU4GiaKhnAZb2kebv51.nZpK_\\\",\\\"sequencer\\\":\\\"005AC599B1180763F2\\\"}}}]}\",\"Timestamp\":\"2018-04-05T03:36:17.180Z\",\"SignatureVersion\":\"1\",\"Signature\":\"UXeOYqY/z1qBc1TGchxqguVIFwAvF+aB7Db59Hc5aGlcgrNs+NTu6kN2df3fAPXO/B1unKb6ZineXwQOeuk38q4Vji/d51DYixHsxVUClcC9TA7SjJWtHlEclyZ+4FeCnhufKp4V29COsBTbFnPwsAjUKXgvKcPUtR5SnJxnQ3dfWiCwKrAIs6Kxx8eSNLZIfN4qMkn8kJhcg5YIHzBl63LQr5xaFkjjn9zybmaLsg06QENoIXDBGlDYW6ot2Llkva4VVTqdl8ODvADpdShnvXnH4Ju7rTIfiDJUF+YEhuGoLIrsR3nxYXTvxqgCdIxOlKclOHHeH543fmswjIRDPg==\",\"SigningCertUrl\":\"https://sns.us-east-1.amazonaws.com/SimpleNotificationService-433026a4050d206028891664da859041.pem\",\"UnsubscribeUrl\":\"https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:12345:topic:4aa5d26a-d6a0-4fee-b145-37e6a3c4538b\",\"MessageAttributes\":{}}}]}",
+        "Timestamp" : "2018-04-05T03:39:40.781Z",
+        "SignatureVersion" : "1",
+        "Signature" : "aMxDC03EL7YpKr403lJUUHFasRkts2PQaLpdoGe4ePtmoz1lDJWdNTZC3nN4dBIDIROQISBdMTtWcTaJIhYfhoe6V8K//nvI8xfut9IuTn5G9XU81Mcl1x02ppgjRH1du0urEk1MN/dCD28y29NlTzSDAcHhHw4Ya5Y2W4lJyqyiXaqExXKzOVsOoiUMiYiSOfy7VkuRnvNIgnUeSvsv+yyktDqJ9Bt2bykOdjVbDslR9wY2x+k8przUZhebHaSYMutccKHWeyOrSNTp9iKTIQc3klsntlU4Q7FdPQjiNn2Sj5QI4J3/8gSSI3U/vcx1GcUkkev2eSuekoiiac85kA==",
+        "SigningCertURL" : "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-433026a4050d206028891664da859041.pem",
+        "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:12345:topic",
+        "MessageAttributes" : {
+          "RequestID" : {"Type":"String","Value":"7f95ae71-3882-11e8-b926-45572cf01978"},
+          "ErrorCode" : {"Type":"Number","Value":"200"},
+          "ErrorMessage" : {"Type":"String","Value":"StackError(Failed to create change set and execute it for: somestack/demo.12345/demo-stack.yaml. Reason: ChangeSet cloudformation-automation cannot be created due to a mismatch with existing attribute Parameters (Service: AmazonCloudFormation; Status Code: 400; Error Code: AlreadyExistsException; Request ID: f89a5d45-3882-11e8-9648-0d4ed4226ac3))"}
+        }
+      }
+    }
+  ]
+}
