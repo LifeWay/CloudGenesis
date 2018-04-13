@@ -12,8 +12,13 @@ object DeleteStackExecutorTests extends TestSuite {
     'goodIfSuccessful - {
       val cfClient = new CloudFormationTestClient {
         override def describeStacks(req: DescribeStacksRequest): DescribeStacksResult =
-          new DescribeStacksResult().withStacks(new Stack().withStackName("test-stack"))
-        override def deleteStack(deleteStackRequest: DeleteStackRequest): DeleteStackResult = new DeleteStackResult()
+          if (req.getStackName.equals(stackConfig.stackName))
+            new DescribeStacksResult().withStacks(new Stack().withStackName("test-stack"))
+          else throw new IllegalArgumentException
+        override def deleteStack(req: DeleteStackRequest): DeleteStackResult =
+          if (req.getStackName.equals(stackConfig.stackName))
+            new DeleteStackResult()
+          else throw new IllegalArgumentException
       }
       val result = DeleteStackExecutor.execute(cfClient, stackConfig, s3File)
       assert(result == Good(()))

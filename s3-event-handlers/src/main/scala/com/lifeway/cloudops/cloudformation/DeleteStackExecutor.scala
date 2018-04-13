@@ -3,6 +3,7 @@ package com.lifeway.cloudops.cloudformation
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.model.{DeleteStackRequest, DescribeStacksRequest}
 import org.scalactic.{Bad, Good, Or}
+import org.slf4j.LoggerFactory
 
 /**
   * Delete stack executor. Given the StackConfig and S3File, do the delete of the given stack. If CF service raises
@@ -12,12 +13,15 @@ import org.scalactic.{Bad, Good, Or}
   * directly as part of that invoke.
   *
   */
+// $COVERAGE-OFF$
 object DeleteStackExecutorDefaultFunctions extends StackExecutor {
   override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] =
     DeleteStackExecutor.execute
 }
+// $COVERAGE-ON$
 
 object DeleteStackExecutor {
+  val logger = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.DeleteStackExecutor")
 
   def execute(cfClient: AmazonCloudFormation, config: StackConfig, s3File: S3File): Unit Or AutomationError =
     try {
@@ -34,7 +38,7 @@ object DeleteStackExecutor {
       }
     } catch {
       case e: Throwable =>
-        e.printStackTrace()
+        logger.error(s"Failed to delete stack: ${s3File.key}", e)
         Bad(StackError(s"Failed to delete stack: ${s3File.key} due to: ${e.getMessage}"))
     }
 }
