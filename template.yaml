@@ -34,11 +34,12 @@ Parameters:
   HookUrl:
     Description: Slack webhook URL; see https://example.slack.com/apps/
     Type: String
-    Default: https://hooks.slack.com/services/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
   Channel:
     Description: Channel name to post to 
     Type: String
-    Default: cf-notifications-poc`
+  EmailContact:
+    Description: Email to send unhandled errors
+    Type: String
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
@@ -160,12 +161,12 @@ Resources:
           - Arn
         Protocol: lambda
 
-  LambdaExecutionErrorsTopic:
+  SlackNotificationErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: "CF Automation: Errors"
       Subscription:
-        - Endpoint: "adam.herrington@lifeway.com"
+        - Endpoint: !Ref EmailContact
           Protocol: "email-json"
 
   CloudFormationEventsTopic:
@@ -355,11 +356,11 @@ Resources:
             Action:
               - sns:Publish
             Resource:
-              - !Ref LambdaExecutionErrorsTopic
+              - !Ref SlackNotificationErrorsTopic
           - Effect: Allow
             Action:
               - cloudformation:DescribeStackResources
-            Resource: arn:aws:cloudformation:*:*:*/*/*
+            Resource: '*'
 
   CFNotifyFunction:
     Type: AWS::Serverless::Function
@@ -373,7 +374,7 @@ Resources:
       AutoPublishAlias: "live"
       DeadLetterQueue:
         Type: SNS
-        TargetArn: !Ref LambdaExecutionErrorsTopic
+        TargetArn: !Ref SlackNotificationErrorsTopic
       Environment:
         Variables:
           WEBHOOK: !Ref HookUrl
@@ -405,7 +406,7 @@ Resources:
           CHANNEL: !Ref Channel
       DeadLetterQueue:
         Type: SNS
-        TargetArn: !Ref LambdaExecutionErrorsTopic
+        TargetArn: !Ref SlackNotificationErrorsTopic
 
   SNSDLQErrorInvokePermission:
     Type: AWS::Lambda::Permission
@@ -433,7 +434,7 @@ Resources:
           CHANNEL: !Ref Channel
       DeadLetterQueue:
         Type: SNS
-        TargetArn: !Ref LambdaExecutionErrorsTopic
+        TargetArn: !Ref SlackNotificationErrorsTopic
         
   CodeBuildErrorInvokePermission:
       Type: AWS::Lambda::Permission
