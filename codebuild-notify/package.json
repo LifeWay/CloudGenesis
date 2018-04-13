@@ -1,0 +1,8 @@
+{
+  "name": "codebuild-notify-slack",
+  "version": "1.0.0",
+  "main": "handler.js",
+  "dependencies": {
+    "slack-node": "^0.1.8"
+  }
+}
