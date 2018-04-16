@@ -199,6 +199,7 @@ object CreateStackExecutorTests extends TestSuite {
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
+                req.getRoleARN.equals("some-role-arn") &&
                 req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
                 req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
@@ -220,7 +221,7 @@ object CreateStackExecutorTests extends TestSuite {
           changeSetReady = (_, _) => (_, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetType = (_, _) => Success(ChangeSetType.CREATE)
-        )(testSystem, false, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(testSystem, false, "some-role-arn", "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -239,6 +240,7 @@ object CreateStackExecutorTests extends TestSuite {
                                                        changeSetType = (_, _) => Success(ChangeSetType.CREATE))(
           testSystem,
           false,
+          "some-role-arn",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
@@ -258,6 +260,7 @@ object CreateStackExecutorTests extends TestSuite {
                                                        changeSetType = (_, _) => Failure(new Exception("boom")))(
           testSystem,
           false,
+          "some-role-arn",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(
@@ -279,6 +282,7 @@ object CreateStackExecutorTests extends TestSuite {
                                                        changeSetType = (_, _) => Success(ChangeSetType.CREATE))(
           testSystem,
           false,
+          "some-role-arn",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError(
