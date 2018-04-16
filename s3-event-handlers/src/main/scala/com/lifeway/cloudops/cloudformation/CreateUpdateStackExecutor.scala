@@ -19,7 +19,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 import akka.pattern.after
-import com.lifeway.cloudops.cloudformation.Types.{IAMCapabilityEnabled, SNSArn}
+import com.lifeway.cloudops.cloudformation.Types.{IAMCapabilityEnabled, SNSArn, StackRoleArn}
 import org.scalactic.{Bad, Good, Or}
 import org.slf4j.LoggerFactory
 
@@ -37,10 +37,13 @@ import scala.util.{Failure, Success, Try}
   * @param snsARN
   */
 // $COVERAGE-OFF$
-class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem, iam: IAMCapabilityEnabled, snsARN: SNSArn)
+class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
+                                                iam: IAMCapabilityEnabled,
+                                                val stackRoleArn: StackRoleArn,
+                                                val snsARN: SNSArn)
     extends StackExecutor {
   override val execute: (AmazonCloudFormation, StackConfig, S3File) => Unit Or AutomationError = {
-    CreateUpdateStackExecutor.execute()(actorSystem, iam, snsARN)
+    CreateUpdateStackExecutor.execute()(actorSystem, iam, stackRoleArn, snsARN)
   }
 }
 // $COVERAGE-ON$
@@ -55,6 +58,7 @@ object CreateUpdateStackExecutor {
               changeSetType: (AmazonCloudFormation, StackConfig) => Try[ChangeSetType] = determineChangeSetType)(
       actorSystem: ActorSystem,
       iam: IAMCapabilityEnabled,
+      stackRoleArn: StackRoleArn,
       snsARN: SNSArn)(cfClient: AmazonCloudFormation, config: StackConfig, s3File: S3File): Unit Or AutomationError = {
 
     val tags: Seq[AWSTag] =
@@ -74,6 +78,7 @@ object CreateUpdateStackExecutor {
       s => {
         val changeSetReq = new CreateChangeSetRequest()
           .withCapabilities(capabilities(iam): _*)
+          .withRoleARN(stackRoleArn)
           .withChangeSetName(ChangeSetName)
           .withChangeSetType(s)
           .withDescription(s"From CF Automation File: ${s3File.key}")
