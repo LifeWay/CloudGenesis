@@ -119,7 +119,7 @@ object LambdaStackHandler {
       env <- Or.from(envVars, "IAM_ASSUME_ROLE_NAME or CF_EVENTS_TOPIC_ARN env variables were not set.")
     } yield {
       val executors: Map[EventType, StackExecutor] = Map(
-        CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(system, iamCapabilities, env._2),
+        CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(system, iamCapabilities, env._1, env._2),
         DeletedEvent      -> DeleteStackExecutorDefaultFunctions
       )
       new EventProcessorDefaultFunctions(stsClient,
