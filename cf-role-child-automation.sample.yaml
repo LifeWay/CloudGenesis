@@ -1,0 +1,88 @@
+#
+# Child Automation Role
+#
+# This role would be typically managed via a Master CF automation stack itself (that has full admin / IAM permissions in
+# the target accounts).
+#
+# This role defines what the child automation is allowed to do. Typically this role would lock a team down to only being
+# able to manage resources for which they are approved to manage without additional review. (e.g. this team can merge
+# their own CF stacks / templates for which this deployment of the CF automation creates)
+#
+# *** WARNING ***
+# Many types of things need to be able to pass roles - EC2's, ECS Tasks, Lambdas, CodeBuild, etc. The automation
+# must therefore have access to pass the roles those systems need to be able to create.. but, you need to avoid a team
+# from passing someone else's role. This needs to be carefully managed if you allow iam:PassRole with a wildcard pattern
+# Thoughtful consideration needs to be made to a role naming convention or using the IAM Path's feature for all of the
+# roles merged into a Master repo for the main automation to create.
+#
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  CFAutomationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DeployerAccountId}:root"
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      RoleName: !Ref CFAccessRoleName
+      ManagedPolicyArns: !Ref ExecutionRoleManagedPolicies
+      Policies:
+        - PolicyName: "CFAccess"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  - "cloudformation:CreateChangeSet"
+                  - "cloudformation:DeleteStack"
+                  - "cloudformation:DescribeChangeSet"
+                  - "cloudformation:DescribeStacks"
+                  - "cloudformation:ExecuteChangeSet"
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${AutomationStackName}-cfstack-bucket/*"
+        - PolicyName: "PassRoleToCF"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt CFServiceRole.Arn
+
+  CFServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      RoleName: "cf-automation-for-TEAMNAME"  #TODO: swap this rolename out for what makes the most sense for your org.
+      Policies:
+        - PolicyName: "CFAccess"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  - "lambda:*"  # TODO: the list of services (with * access) that this team's automation can manage.
+        - PolicyName: "AllowedPassRoles"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - "arn:aws:iam::*:role/TEAMNAME-*"  #TODO: the naming pattern or path pattern that matches the roles this team can pass to resources created by CloudFormation.

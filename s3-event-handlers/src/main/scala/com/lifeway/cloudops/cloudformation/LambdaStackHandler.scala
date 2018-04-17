@@ -29,14 +29,17 @@ class LambdaStackHandler {
   val iamCapabilities: IAMCapabilityEnabled           = sys.env.get("IAM_CAPABILITIES_ENABLED").exists(_.toBoolean)
   val semanticStackNaming: SemanticStackNamingEnabled = sys.env.get("SEMANTIC_STACK_NAMING").forall(_.toBoolean)
   val snsExternalNotifyTopicArn: ExternalNotifySNSArn = sys.env.get("SNS_EXTERNAL_TOPIC_NOTIFY_ARN")
+  val cfServiceRoleName: CFServiceRoleName            = sys.env.get("IAM_CF_SERVICE_ROLE_NAME")
   val system                                          = ActorSystem("SchedulerSystem")
   val eventProcessorOr: EventProcessor Or Every[AutomationError] =
-    LambdaStackHandler.loadEventProcessor(varName => sys.env.get(varName))(stsClient,
+    LambdaStackHandler.loadEventProcessor(varName =>
+      sys.env.get(varName).flatMap(x => if (x.isEmpty) None else Some(x)))(stsClient,
                                                                            s3Client,
                                                                            snsClient,
                                                                            semanticStackNaming,
                                                                            system,
                                                                            iamCapabilities,
+                                                                           cfServiceRoleName,
                                                                            snsExternalNotifyTopicArn)
   val handler = LambdaStackHandler.lambdaHandler(eventProcessorOr, LambdaStackHandler.eventHandler) _
 
@@ -46,9 +49,9 @@ class LambdaStackHandler {
     * chain
     *
     * @param event
-    * @param content
+    * @param ctx
     */
-  def createUpdateHandler(event: SNSEvent, content: Context): Unit = handler(CreateUpdateEvent, event)
+  def createUpdateHandler(event: SNSEvent, ctx: Context): Unit = handler(CreateUpdateEvent, event)
 
   /**
     * Given an SNS Event that should be wrapping an S3 message, process it and then transform the type system back
@@ -56,9 +59,9 @@ class LambdaStackHandler {
     * chain
     *
     * @param event
-    * @param content
+    * @param ctx
     */
-  def deleteHandler(event: SNSEvent, content: Context): Unit = handler(DeletedEvent, event)
+  def deleteHandler(event: SNSEvent, ctx: Context): Unit = handler(DeletedEvent, event)
 }
 // $COVERAGE-ON$
 
@@ -90,7 +93,8 @@ object LambdaStackHandler {
     )
 
   /**
-    * Loads the EventProcessor that is used for processing the events. This should be loaded on function cold start.
+    * Loads the EventProcessor that is used for processing the events. This should be loaded on function cold start and
+    * kept in memory outside of the handler invoke.
     *
     * @param envFetch
     * @param stsClient
@@ -109,18 +113,18 @@ object LambdaStackHandler {
       semanticStackNaming: SemanticStackNamingEnabled,
       system: ActorSystem,
       iamCapabilities: IAMCapabilityEnabled,
+      cFServiceRoleName: CFServiceRoleName,
       externalSNSArn: ExternalNotifySNSArn): EventProcessor Or Every[AutomationError] = {
-    val envVars: Option[(AssumeRoleName, SNSArn)] = for {
-      roleArn <- envFetch("IAM_ASSUME_ROLE_NAME").flatMap(x => if (x.isEmpty) None else Some(x))
-      snsArn  <- envFetch("CF_EVENTS_TOPIC_ARN").flatMap(x => if (x.isEmpty) None else Some(x))
-    } yield (roleArn, snsArn)
-
-    (for {
-      env <- Or.from(envVars, "IAM_ASSUME_ROLE_NAME or CF_EVENTS_TOPIC_ARN env variables were not set.")
+    val eventProcessorOpt: Option[EventProcessor] = for {
+      assumeRoleName <- envFetch("IAM_ASSUME_ROLE_NAME")
+      snsEventsArn   <- envFetch("CF_EVENTS_TOPIC_ARN")
     } yield {
       val executors: Map[EventType, StackExecutor] = Map(
-        CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(system, iamCapabilities, env._1, env._2),
-        DeletedEvent      -> DeleteStackExecutorDefaultFunctions
+        CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(system,
+                                                                           iamCapabilities,
+                                                                           cFServiceRoleName,
+                                                                           snsEventsArn),
+        DeletedEvent -> DeleteStackExecutorDefaultFunctions
       )
       new EventProcessorDefaultFunctions(stsClient,
                                          s3Client,
@@ -128,8 +132,11 @@ object LambdaStackHandler {
                                          externalSNSArn,
                                          semanticStackNaming,
                                          executors,
-                                         env._1)
-    }).badMap(e => One(LambdaConfigError(e)))
+                                         assumeRoleName)
+    }
+
+    Or.from(eventProcessorOpt, "IAM_ASSUME_ROLE_NAME or CF_EVENTS_TOPIC_ARN env variables were not set.")
+      .badMap(e => One(LambdaConfigError(e)))
   }
 
   /**

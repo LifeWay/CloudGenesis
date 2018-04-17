@@ -13,10 +13,13 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
-  AssumeRoleName:
+  CFAccessRoleName:
     Description: "The name of the role in each account that the deployer assumes for access to CloudFormation"
     Type: String
-    Default: "CF-Automated-Deploy"
+  CFServiceRoleName:
+    Description: "The name of the CloudFormation service role in each account that is used by CF for managing the resources. Leave EMPTY if wish to use the CFAccessRoleName's role to also manage the resources (no service role). This role must be passable by the CFAccessRoleName and assumable by CloudFormation"
+    Type: String
+    Default: ""
   SemanticStackNaming:
     Description: "Forces semantic stack naming, even when stacks provide their own StackName. This is highly recommended, otherwise two stacks that accidentally specify the same name will overwrite each other"
     Type: String
@@ -24,25 +27,26 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
-  AccountIDArns:
-    Description: "The list of account ID's in full ARN form (`arn:aws:iam::<ID>:root`) that can be automatically deployed to."
+  AccountIds:
+    Description: "The list of account ID's that can be automatically deployed to. Needed for those accounts to access the S3 bucket for templates and emit SNS events from CloudFormation"
     Type: CommaDelimitedList
   ExternalNotificationSNSArn:
-    Description: "The SNS arn to publish events to that contain the notice of change that is occurring by the automation. Leave empty if not used."
+    Description: "The SNS arn to publish events to that contain a record of the change that is occurring by the automation. Leave empty if not used."
     Type: String
     Default: ""
-  HookUrl:
+  SlackWebHookUrl:
     Description: Slack webhook URL; see https://example.slack.com/apps/
     Type: String
-  Channel:
-    Description: Channel name to post to 
+  SlackChannel:
+    Description: Slack Channel name to post to
     Type: String
   EmailContact:
-    Description: Email to send unhandled errors
+    Description: Email to send unhandled errors (when Slack's API is down)
     Type: String
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
+  HasCFServiceRole: !Not [!Equals [!Ref CFServiceRoleName, ""]]
 
 Resources:
   S3CreateUpdateEventsTopic:
@@ -134,7 +138,7 @@ Resources:
               - s3:GetObjectVersion
             Effect: "Allow"
             Principal:
-              AWS: !Ref AccountIDArns
+              AWS: !Ref AccountIds
             Resource:
               - !Sub "arn:aws:s3:::${AWS::StackName}-cfstack-bucket"
               - !Sub "arn:aws:s3:::${AWS::StackName}-cfstack-bucket/*"
@@ -191,7 +195,7 @@ Resources:
           - Sid: "PublishEvents"
             Effect: Allow
             Principal:
-              AWS: !Ref AccountIDArns
+              AWS: !Ref AccountIds
             Action: sns:Publish
             Resource: !Ref CloudFormationEventsTopic
 
@@ -245,7 +249,7 @@ Resources:
                 Action:
                   - sts:AssumeRole
                 Resource:
-                  - !Sub "arn:aws:iam::*:role/${AssumeRoleName}"
+                  - !Sub "arn:aws:iam::*:role/${CFAccessRoleName}"
         - PolicyName: "snsDLQ"
           PolicyDocument:
             Statement:
@@ -291,7 +295,8 @@ Resources:
           CF_EVENTS_TOPIC_ARN: !Ref CloudFormationEventsTopic
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
-          IAM_ASSUME_ROLE_NAME: !Ref AssumeRoleName
+          IAM_ASSUME_ROLE_NAME: !Ref CFAccessRoleName
+          IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
       Role: !GetAtt LambdaStackMgmtRole.Arn
       Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::createUpdateHandler
@@ -318,7 +323,8 @@ Resources:
           CF_EVENTS_TOPIC_ARN: !Ref CloudFormationEventsTopic
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
-          IAM_ASSUME_ROLE_NAME: !Ref AssumeRoleName
+          IAM_ASSUME_ROLE_NAME: !Ref CFAccessRoleName
+          IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
       Role: !GetAtt LambdaStackMgmtRole.Arn
       Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::deleteHandler
@@ -377,8 +383,8 @@ Resources:
         TargetArn: !Ref SlackNotificationErrorsTopic
       Environment:
         Variables:
-          WEBHOOK: !Ref HookUrl
-          CHANNEL: !Ref Channel
+          WEBHOOK: !Ref SlackWebHookUrl
+          CHANNEL: !Ref SlackChannel
 
   CFNotifyInvokePermission:
     Type: AWS::Lambda::Permission
@@ -402,8 +408,8 @@ Resources:
       AutoPublishAlias: "live"
       Environment:
         Variables:
-          WEBHOOK: !Ref HookUrl
-          CHANNEL: !Ref Channel
+          WEBHOOK: !Ref SlackWebHookUrl
+          CHANNEL: !Ref SlackChannel
       DeadLetterQueue:
         Type: SNS
         TargetArn: !Ref SlackNotificationErrorsTopic
@@ -430,8 +436,8 @@ Resources:
       AutoPublishAlias: "live"
       Environment:
         Variables:
-          WEBHOOK: !Ref HookUrl
-          CHANNEL: !Ref Channel
+          WEBHOOK: !Ref SlackWebHookUrl
+          CHANNEL: !Ref SlackChannel
       DeadLetterQueue:
         Type: SNS
         TargetArn: !Ref SlackNotificationErrorsTopic
