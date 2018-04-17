@@ -32,7 +32,7 @@ def build_message(attachments, event):
     
     message = {
         'icon_emoji': ':cloud:',
-        'username': 'cf-bot',
+        'username': 'CF-Automation',
         'channel': slack.CHANNEL,
         'text': 'Stack ERROR',
         'attachments': attachments

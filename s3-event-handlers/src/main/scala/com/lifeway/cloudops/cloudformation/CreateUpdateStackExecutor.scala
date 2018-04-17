@@ -19,7 +19,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 import akka.pattern.after
-import com.lifeway.cloudops.cloudformation.Types.{IAMCapabilityEnabled, SNSArn, StackRoleArn}
+import com.lifeway.cloudops.cloudformation.Types.{CFServiceRoleName, IAMCapabilityEnabled, SNSArn}
 import org.scalactic.{Bad, Good, Or}
 import org.slf4j.LoggerFactory
 
@@ -39,11 +39,11 @@ import scala.util.{Failure, Success, Try}
 // $COVERAGE-OFF$
 class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
                                                 iam: IAMCapabilityEnabled,
-                                                val stackRoleArn: StackRoleArn,
+                                                cfServiceRoleName: CFServiceRoleName,
                                                 val snsARN: SNSArn)
     extends StackExecutor {
   override val execute: (AmazonCloudFormation, StackConfig, S3File) => Unit Or AutomationError = {
-    CreateUpdateStackExecutor.execute()(actorSystem, iam, stackRoleArn, snsARN)
+    CreateUpdateStackExecutor.execute()(actorSystem, iam, cfServiceRoleName, snsARN)
   }
 }
 // $COVERAGE-ON$
@@ -58,7 +58,7 @@ object CreateUpdateStackExecutor {
               changeSetType: (AmazonCloudFormation, StackConfig) => Try[ChangeSetType] = determineChangeSetType)(
       actorSystem: ActorSystem,
       iam: IAMCapabilityEnabled,
-      stackRoleArn: StackRoleArn,
+      cfServiceRoleName: CFServiceRoleName,
       snsARN: SNSArn)(cfClient: AmazonCloudFormation, config: StackConfig, s3File: S3File): Unit Or AutomationError = {
 
     val tags: Seq[AWSTag] =
@@ -76,9 +76,10 @@ object CreateUpdateStackExecutor {
             s"Failed to create change set and execute it due to failure determining change set type: ${f.getMessage}"))
       },
       s => {
-        val changeSetReq = new CreateChangeSetRequest()
+        val changeSetReq = cfServiceRoleName
+          .fold(new CreateChangeSetRequest())(serviceRoleName =>
+            new CreateChangeSetRequest().withRoleARN(buildStackServiceRoleArn(serviceRoleName, s3File)))
           .withCapabilities(capabilities(iam): _*)
-          .withRoleARN(stackRoleArn)
           .withChangeSetName(ChangeSetName)
           .withChangeSetType(s)
           .withDescription(s"From CF Automation File: ${s3File.key}")
@@ -121,6 +122,11 @@ object CreateUpdateStackExecutor {
         else Failure(t)
       case e: Throwable => Failure(e)
     }
+
+  def buildStackServiceRoleArn(cfServiceRoleName: String, s3File: S3File): String = {
+    val accountId = EventProcessor.accountNumberParser(s3File.key)
+    s"arn:aws:iam::$accountId:role/$cfServiceRoleName"
+  }
 
   def waitForChangeSetReady(
       cfClient: AmazonCloudFormation,
