@@ -1,0 +1,89 @@
+#
+# First Setup Stack / Master Automation ( creates any kind of resource )
+#
+# Typically used for Stack Set template - this creates the role that the CF Automation will assume so that it can
+# do the CloudFormation operations in that account.
+#
+# *** WARNING ****
+# This role has access to create cloudformation stacks that can create anything. This stack is ideal for simple setups
+# where you will only have a single repo that deploys CF automation across your accounts OR used for the repo that your
+# Security team / CloudOps team carefully manages to create IAM or other sensitive resources.
+#
+# If you wish to have other, secondary repos that can deploy more limited stacks, then you would typically use the
+# automation deployer itself to deploy those roles for other automated deployers! A sample stack for those setups is
+# also provided as a "child" automation
+#
+#
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  CFAccessRoleName:
+    Description: "The name of the IAM Role that will be created in each of the accounts. This name is provided to the deployer stack under the same parameter name"
+    Type: String
+
+  CFServiceRoleName:
+    Description: "The name of the CloudFormation Service Role that will be used by CloudFormation on each stack that the automation manages. This name is provided to the deployer stack under the same parameter name"
+    Type: String
+
+  DeployerAccountId:
+    Description: "The Account ID that the automated deployer is running in"
+    Type: Number
+
+  AutomationStackName:
+    Description: "The name you will launch the CloudFormation Automation stack as"
+    Type: String
+
+Resources:
+  CFAutomationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DeployerAccountId}:root"
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      RoleName: !Ref CFAccessRoleName
+      Policies:
+        - PolicyName: "CFAccess"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  - "cloudformation:CreateChangeSet"
+                  - "cloudformation:DeleteStack"
+                  - "cloudformation:DescribeChangeSet"
+                  - "cloudformation:DescribeStacks"
+                  - "cloudformation:ExecuteChangeSet"
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${AutomationStackName}-cfstack-bucket/*"
+        - PolicyName: "PassRoleToCF"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt CFServiceRole.Arn
+
+  CFServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      RoleName: !Ref CFServiceRoleName
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess"

@@ -10,7 +10,7 @@ object Types {
   type SemanticStackNamingEnabled = Boolean
   type AssumeRoleName             = String
   type SNSArn                     = String
-  type StackRoleArn               = String
+  type CFServiceRoleName          = Option[String]
   type ExternalNotifySNSArn       = Option[String]
 }
 
