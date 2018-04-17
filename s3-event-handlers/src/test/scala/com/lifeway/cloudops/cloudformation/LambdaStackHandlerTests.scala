@@ -67,13 +67,14 @@ object LambdaStackHandlerTests extends TestSuite {
                                                                         semanticStackNaming = true,
                                                                         null,
                                                                         iamCapabilities = true,
+                                                                        null,
                                                                         null)
         assert(processor.isGood)
       }
 
-      'returnErrorIfMissingIAMAssumeRoleNameEnvVar - {
+      'returnErrorIfMissingOneOfRoleVars - {
         var envFetch: (String) => Option[String] = {
-          case "IAM_ASSUME_ROLE_NAME" => Some("")
+          case "IAM_ASSUME_ROLE_NAME" => None
           case "CF_EVENTS_TOPIC_ARN"  => Some("SNS_ARN_FOR_CF_EVENTS")
           case _                      => throw new IllegalArgumentException
         }
@@ -84,26 +85,7 @@ object LambdaStackHandlerTests extends TestSuite {
                                                                         semanticStackNaming = true,
                                                                         null,
                                                                         iamCapabilities = true,
-                                                                        null)
-
-        val expected =
-          Bad(One(LambdaConfigError("IAM_ASSUME_ROLE_NAME or CF_EVENTS_TOPIC_ARN env variables were not set.")))
-        assert(processor == expected)
-      }
-
-      'returnErrorIfMissingCFEventsTopicArnEnvVar - {
-        var envFetch: (String) => Option[String] = {
-          case "IAM_ASSUME_ROLE_NAME" => Some("IAM_ROLE_NAME")
-          case "CF_EVENTS_TOPIC_ARN"  => Some("")
-          case _                      => throw new IllegalArgumentException
-        }
-
-        val processor = LambdaStackHandler.loadEventProcessor(envFetch)(null,
                                                                         null,
-                                                                        null,
-                                                                        semanticStackNaming = true,
-                                                                        null,
-                                                                        iamCapabilities = true,
                                                                         null)
 
         val expected =

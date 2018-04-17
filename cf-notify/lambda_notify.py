@@ -2,12 +2,11 @@ import json
 import shlex
 import urllib
 import urllib2
-import slack
-import boto3
 import re
-from itertools import groupby
+import os
 
 #
+# Original inspiration for this came from the following Library (no OSS license applied at that time we forked it):
 # From: https://github.com/guardian/cf-notify
 #
 
@@ -20,6 +19,7 @@ STATUS_COLORS = {
     'DELETE_COMPLETE': 'good',
     'DELETE_FAILED': 'danger',
     'DELETE_IN_PROGRESS': 'good',
+    'REVIEW_IN_PROGRESS': 'good',
     'ROLLBACK_COMPLETE': 'warning',
     'ROLLBACK_FAILED': 'danger',
     'ROLLBACK_IN_PROGRESS': 'warning',
@@ -32,97 +32,71 @@ STATUS_COLORS = {
     'UPDATE_ROLLBACK_IN_PROGRESS': 'warning'
 }
 
-# List of CloudFormation status that will trigger a call to `get_stack_summary_attachment`
-DESCRIBE_STACK_STATUS = [
+# List of stack status events that will emit to slack
+EVENTS_FOR_SLACK = [
     'CREATE_COMPLETE',
-    'DELETE_IN_PROGRESS'
-]
-
-# List of properties from ths SNS message that will be included in a Slack message
-SNS_PROPERTIES_FOR_SLACK = [
-    'StackId',
+    'CREATE_IN_PROGRESS',
+    'CREATE_FAILED',
+    'DELETE_COMPLETE',
+    'DELETE_IN_PROGRESS',
+    'ROLLBACK_COMPLETE',
+    'ROLLBACK_FAILED',
+    'ROLLBACK_IN_PROGRESS',
+    'UPDATE_COMPLETE',
+    'UPDATE_IN_PROGRESS',
+    'UPDATE_ROLLBACK_COMPLETE',
+    'UPDATE_ROLLBACK_FAILED',
+    'UPDATE_ROLLBACK_IN_PROGRESS',
+    'REVIEW_IN_PROGRESS'
 ]
 
 
 def lambda_handler(event, context):
     message = event['Records'][0]['Sns']
     sns_message = message['Message']
+    webhook = os.environ['WEBHOOK']
+    channel = os.environ['CHANNEL']
+
     cf_message = dict(token.split('=', 1) for token in shlex.split(sns_message))
 
     # ignore messages that do not pertain to the Stack as a whole
     if not cf_message['ResourceType'] == 'AWS::CloudFormation::Stack':
         return
 
-    message = get_stack_update_message(cf_message)
+    # ignore events we don't care about.
+    if cf_message['ResourceStatus'] not in EVENTS_FOR_SLACK:
+        return
+
+    message = get_stack_update_message(cf_message, channel)
     data = json.dumps(message)
-    req = urllib2.Request(slack.WEBHOOK, data, {'Content-Type': 'application/json'})
+    req = urllib2.Request(webhook, data, {'Content-Type': 'application/json'})
     urllib2.urlopen(req)
 
 
-def get_stack_update_message(cf_message):
-    attachments = [
-        get_stack_update_attachment(cf_message)
-    ]
-
-    if cf_message['ResourceStatus'] in DESCRIBE_STACK_STATUS:
-        attachments.append(get_stack_summary_attachment(cf_message['StackName']))
-
-    stack_url = get_stack_url(cf_message['StackId'])
-
-    message = {
+def get_stack_update_message(cf_message, channel):
+    return {
         'icon_emoji': ':cloud:',
-        'username': 'cf-bot',
-        'text': 'Stack: {stack} has entered status: {status} <{link}|(view in web console)>'.format(
-                stack=cf_message['StackName'], status=cf_message['ResourceStatus'], link=stack_url),
-        'attachments': attachments
+        'channel': channel,
+        'username': 'CF-Automation',
+        'attachments': [
+            get_stack_update_attachment(cf_message)
+        ]
     }
-
-    channel = get_channel(cf_message['StackName'])
-
-    if channel:
-        message['channel'] = channel
-
-    return message
-
-
-def get_channel(stack_name):
-    default = slack.CHANNEL if hasattr(slack, 'CHANNEL') else None
-
-    if hasattr(slack, 'CUSTOM_CHANNELS'):
-        return slack.CUSTOM_CHANNELS.get(stack_name, default)
-
-    return default
 
 
 def get_stack_update_attachment(cf_message):
-    title = 'Stack {stack} is now status {status}'.format(
+    title = 'Stack <{link}|{stack}> has entered status: {status}'.format(
+        link=get_stack_url(cf_message['StackId']),
         stack=cf_message['StackName'],
         status=cf_message['ResourceStatus'])
 
     return {
         'fallback': title,
         'title': title,
-        'fields': [{'title': k, 'value': v, 'short': True}
-                   for k, v in cf_message.iteritems() if k in SNS_PROPERTIES_FOR_SLACK],
+        'text': cf_message['StackId'],
         'color': STATUS_COLORS.get(cf_message['ResourceStatus'], '#000000'),
     }
 
-
-def get_stack_summary_attachment(stack_name):
-    client = boto3.client('cloudformation')
-    resources = client.describe_stack_resources(StackName=stack_name)
-    sorted_resources = sorted(resources['StackResources'], key=lambda res: res['ResourceType'])
-    grouped_resources = groupby(sorted_resources, lambda res: res['ResourceType'])
-    resource_count = {key: len(list(group)) for key, group in grouped_resources}
-
-    title = 'Breakdown of all {} resources'.format(len(resources['StackResources']))
-
-    return {
-        'fallback': title,
-        'title': title,
-        'fields': [{'title': 'Type {}'.format(k), 'value': 'Total {}'.format(v), 'short': True}
-                   for k, v in resource_count.iteritems()]
-    }
 
 
 def get_stack_region(stack_id):

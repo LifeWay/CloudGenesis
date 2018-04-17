@@ -9,7 +9,7 @@ class SNSTest(unittest.TestCase):
         jsEvent = json.load(open('./test-files/dlq-error.json'))
         jsNested = json.load(open('./test-files/nestedTest1.json'))
         message = sns_error.build_slack_message(jsNested, jsEvent)
-        assert message['username'] == 'cf-bot'
+        assert message['username'] == 'CF-Automation'
         assert message['text'] == 'Stack ERROR'
         assert len(message['attachments']) == 2
 
@@ -17,7 +17,7 @@ class SNSTest(unittest.TestCase):
         jsEvent = json.load(open('./test-files/dlq-error.json'))
         nestedS3Events = json.load(open('./test-files/twoTemplates.json'))
         message = sns_error.build_slack_message(nestedS3Events, jsEvent)
-        assert message['username'] == 'cf-bot'
+        assert message['username'] == 'CF-Automation'
         assert message['text'] == 'Stack ERROR'
         assert len(message['attachments']) == 3
 
