@@ -251,7 +251,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
-                Resource: !Sub "arn:aws:ssm:*:*:parameter${SSMPath}"
+                Resource: !Sub "arn:aws:ssm:*:*:parameter${SSMPath}*"
         - PolicyName: "cross-account-cloudformation"
           PolicyDocument:
             Statement:
