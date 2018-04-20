@@ -236,6 +236,144 @@ object CreateStackExecutorTests extends TestSuite {
         assert(result.isGood)
       }
 
+      'returnGoodWhenSuccessfulWithServiceRoleAndSSMParam - {
+        val stackConfig = StackConfig(
+          "demo-stack",
+          "demo/template.yaml",
+          Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
+          Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true"), Parameter("myTestSSM", "/path/to/secret", Some("SSM"))))
+        )
+        val parameters: Seq[AWSParam] =
+          stackConfig.parameters
+            .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
+            .getOrElse(Seq.empty)
+        def getSSM(key: String) = {
+          assert(key == "/path/to/secret")
+          Good("this_is_a_secret")
+        }
+        val cfClient = new CloudFormationTestClient {
+          override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
+            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
+              req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
+              req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
+              req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
+              req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+              req.getTemplateURL.equals(
+                s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+              req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+              req.getStackName.equals(stackConfig.stackName) &&
+              req.getParameters.size.equals(parameters.size) &&
+              req.getTags.equals(tags.asJava))
+              new CreateChangeSetResult().withId("this-change-set-id")
+            else throw new Exception("Received unexpected params")
+
+          override def executeChangeSet(req: ExecuteChangeSetRequest): ExecuteChangeSetResult =
+            if (req.getChangeSetName.equals("this-change-set-id")) new ExecuteChangeSetResult()
+            else throw new Exception("Received unexpected params")
+        }
+
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetType = (_, _) => Success(ChangeSetType.CREATE),
+          getSSMParam = getSSM
+        )(testSystem, false, Some("some-role-name"), "some-sns-arn")(cfClient, stackConfig, s3File)
+
+        assert(result.isGood)
+      }
+
+      'returnGoodWhenTypeProvidedButNotRecognized - {
+        val stackConfig = StackConfig(
+          "demo-stack",
+          "demo/template.yaml",
+          Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
+          Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true"), Parameter("someParam", "someValue", Some("NO_BUENO"))))
+        )
+        val parameters: Seq[AWSParam] =
+          stackConfig.parameters
+            .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
+            .getOrElse(Seq.empty)
+        def getSSM(key: String) = {
+          assert(key == "/path/to/secret")
+          Good("this_is_a_secret")
+        }
+        val cfClient = new CloudFormationTestClient {
+          override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
+            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
+              req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
+              req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
+              req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
+              req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+              req.getTemplateURL.equals(
+                s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+              req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+              req.getStackName.equals(stackConfig.stackName) &&
+              req.getParameters.size.equals(parameters.size) &&
+              req.getTags.equals(tags.asJava))
+              new CreateChangeSetResult().withId("this-change-set-id")
+            else throw new Exception("Received unexpected params")
+
+          override def executeChangeSet(req: ExecuteChangeSetRequest): ExecuteChangeSetResult =
+            if (req.getChangeSetName.equals("this-change-set-id")) new ExecuteChangeSetResult()
+            else throw new Exception("Received unexpected params")
+        }
+
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetType = (_, _) => Success(ChangeSetType.CREATE),
+          getSSMParam = getSSM
+        )(testSystem, false, Some("some-role-name"), "some-sns-arn")(cfClient, stackConfig, s3File)
+
+        assert(result.isGood)
+      }
+
+      'returnBadWhenSSMFails - {
+        val stackConfig = StackConfig(
+          "demo-stack",
+          "demo/template.yaml",
+          Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
+          Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true"), Parameter("myTestSSM", "/bad/path/to/secret", Some("SSM"))))
+        )
+        val parameters: Seq[AWSParam] =
+          stackConfig.parameters
+            .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
+            .getOrElse(Seq.empty)
+        def getSSM(key: String) = {
+          assert(key == "/bad/path/to/secret")
+          Bad(SSMDefaultError("Error"))
+        }
+        val cfClient = new CloudFormationTestClient {
+          override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
+            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
+              req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
+              req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
+              req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
+              req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+              req.getTemplateURL.equals(
+                s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+              req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+              req.getStackName.equals(stackConfig.stackName) &&
+              req.getParameters.size.equals(parameters.size) &&
+              req.getTags.equals(tags.asJava))
+              new CreateChangeSetResult().withId("this-change-set-id")
+            else throw new Exception("Received unexpected params")
+
+          override def executeChangeSet(req: ExecuteChangeSetRequest): ExecuteChangeSetResult =
+            if (req.getChangeSetName.equals("this-change-set-id")) new ExecuteChangeSetResult()
+            else throw new Exception("Received unexpected params")
+        }
+
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetType = (_, _) => Success(ChangeSetType.CREATE),
+          getSSMParam = getSSM
+        )(testSystem, false, Some("some-role-name"), "some-sns-arn")(cfClient, stackConfig, s3File)
+
+        assert(result == Bad(StackConfigError("Unable to retrieve parameter from SSM: /bad/path/to/secret")))
+      }
+
       'returnGoodWhenSuccessfulWithoutServiceRole - {
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =

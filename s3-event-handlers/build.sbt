@@ -15,6 +15,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws"            % "aws-java-sdk-cloudformation" % awsVersion,
   "com.amazonaws"            % "aws-java-sdk-sts"            % awsVersion,
   "com.amazonaws"            % "aws-java-sdk-sns"            % awsVersion,
+  "com.amazonaws"            % "aws-java-sdk-ssm"            % awsVersion,
   "com.amazonaws"            % "aws-lambda-java-log4j2"      % "1.1.0",
   "org.apache.logging.log4j" % "log4j-core"                  % "2.8.2",
   "org.apache.logging.log4j" % "log4j-api"                   % "2.8.2",
