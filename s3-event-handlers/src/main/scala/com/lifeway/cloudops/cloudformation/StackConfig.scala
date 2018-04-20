@@ -9,10 +9,12 @@ object Tag {
   implicit val encode: Encoder[Tag] = Encoder.forProduct2("Key", "Value")(x => (x.key, x.value))
 }
 
-case class Parameter(name: String, value: String)
+case class Parameter(name: String, value: String, paramType: Option[String] = None)
 object Parameter {
   implicit val decode: Decoder[Parameter] =
-    Decoder.forProduct2("Name", "Value")(Parameter.apply)(Decoder.decodeString, StackConfig.yamlStringDecoder)
+    Decoder.forProduct3("Name", "Value", "Type")(Parameter.apply)(Decoder.decodeString,
+                                                                  StackConfig.yamlStringDecoder,
+                                                                  Decoder.decodeOption[String])
 }
 
 case class StackConfig(stackName: String, template: String, tags: Option[Seq[Tag]], parameters: Option[Seq[Parameter]])
