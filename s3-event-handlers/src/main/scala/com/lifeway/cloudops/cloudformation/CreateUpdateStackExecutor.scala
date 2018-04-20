@@ -66,13 +66,13 @@ object CreateUpdateStackExecutor {
       config.tags.map(_.map(x => new AWSTag().withKey(x.key).withValue(x.value))).getOrElse(Seq.empty)
     val parameters: Seq[AWSParam] =
       config.parameters
-        .map(_.map{ x =>
-          x.paramType.fold(new AWSParam().withParameterKey(x.name).withParameterValue(x.value)){
-            case "SSM" => getSSMParam(x.value).fold(
-              ssmValue => new AWSParam().withParameterKey(x.name).withParameterValue(ssmValue),
-              _ => return Bad(StackConfigError(s"Unable to retrieve parameter from SSM: ${x.value}"))
+        .map(_.map{ param =>
+          param.paramType.fold(new AWSParam().withParameterKey(param.name).withParameterValue(param.value)){
+            case "SSM" => getSSMParam(param.value).fold(
+              ssmValue => new AWSParam().withParameterKey(param.name).withParameterValue(ssmValue),
+              _ => return Bad(StackConfigError(s"Unable to retrieve parameter from SSM: ${param.value}"))
             )
-            case _ => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)
+            case _ => new AWSParam().withParameterKey(param.name).withParameterValue(param.value)
           }
         })
         .getOrElse(Seq.empty)
