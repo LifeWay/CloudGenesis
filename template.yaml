@@ -43,6 +43,9 @@ Parameters:
   EmailContact:
     Description: Email to send unhandled errors (when Slack's API is down)
     Type: String
+  SSMPath:
+    Type: String
+    Description: Base path to SSM secrets needed by deployer (ie. "arn:aws:ssm:*:*:parameter/cf-automation/${StackName}/*")
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
@@ -242,6 +245,13 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:s3:::${AWS::StackName}-cfstack-bucket"
                   - !Sub "arn:aws:s3:::${AWS::StackName}-cfstack-bucket/*"
+        - PolicyName: "ssm-access"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Ref SSMPath
         - PolicyName: "cross-account-cloudformation"
           PolicyDocument:
             Statement:
