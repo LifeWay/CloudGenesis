@@ -55,7 +55,8 @@ object CreateUpdateStackExecutor {
   def execute(changeSetReady: (AmazonCloudFormation, ActorSystem) => (String, String) => Unit Or AutomationError =
                 (cf, as) => waitForChangeSetReady(cf, as),
               capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
-              changeSetType: (AmazonCloudFormation, StackConfig) => Try[ChangeSetType] = determineChangeSetType)(
+              changeSetType: (AmazonCloudFormation, StackConfig) => Try[ChangeSetType] = determineChangeSetType,
+              getSSMParam: String => Or[String, SSMError] = DefaultSSMUtil.getSSMParam)(
       actorSystem: ActorSystem,
       iam: IAMCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
@@ -65,7 +66,15 @@ object CreateUpdateStackExecutor {
       config.tags.map(_.map(x => new AWSTag().withKey(x.key).withValue(x.value))).getOrElse(Seq.empty)
     val parameters: Seq[AWSParam] =
       config.parameters
-        .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
+        .map(_.map{ x =>
+          x.paramType.fold(new AWSParam().withParameterKey(x.name).withParameterValue(x.value)){
+            case "SSM" => getSSMParam(x.value).fold(
+              ssmValue => new AWSParam().withParameterKey(x.name).withParameterValue(ssmValue),
+              _ => return Bad(StackConfigError(s"Unable to retrieve parameter from SSM: ${x.value}"))
+            )
+            case _ => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)
+          }
+        })
         .getOrElse(Seq.empty)
 
     changeSetType(cfClient, config).fold(
