@@ -45,7 +45,7 @@ Parameters:
     Type: String
   SSMPath:
     Type: String
-    Description: Base path to SSM secrets needed by deployer (ie. "arn:aws:ssm:*:*:parameter/cf-automation/${StackName}/*")
+    Description: Base path to SSM secrets needed by deployer (ie. "/cf-automation/${StackName}/*")
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
@@ -251,7 +251,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
-                Resource: !Ref SSMPath
+                Resource: !Sub arn:aws:ssm:*:*:parameter${SSMPath}
         - PolicyName: "cross-account-cloudformation"
           PolicyDocument:
             Statement:
