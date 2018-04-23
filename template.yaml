@@ -93,6 +93,7 @@ Resources:
 
   CloudFormationSyncBucket:
     Type: AWS::S3::Bucket
+    DependsOn: S3EventsSNSPolicy
     Properties:
       BucketName: !Sub "${AWS::StackName}-cfstack-bucket"
       VersioningConfiguration:
