@@ -30,6 +30,7 @@ class LambdaStackHandler {
   val semanticStackNaming: SemanticStackNamingEnabled = sys.env.get("SEMANTIC_STACK_NAMING").forall(_.toBoolean)
   val snsExternalNotifyTopicArn: ExternalNotifySNSArn = sys.env.get("SNS_EXTERNAL_TOPIC_NOTIFY_ARN")
   val cfServiceRoleName: CFServiceRoleName            = sys.env.get("IAM_CF_SERVICE_ROLE_NAME")
+  val changeSetNamePrefix: ChangeSetNamePrefix        = sys.env.get("CF_CHANGE_SET_NAME_PREFIX")
   val system                                          = ActorSystem("SchedulerSystem")
   val eventProcessorOr: EventProcessor Or Every[AutomationError] =
     LambdaStackHandler.loadEventProcessor(varName =>
@@ -40,6 +41,7 @@ class LambdaStackHandler {
                                                                            system,
                                                                            iamCapabilities,
                                                                            cfServiceRoleName,
+                                                                           changeSetNamePrefix,
                                                                            snsExternalNotifyTopicArn)
   val handler = LambdaStackHandler.lambdaHandler(eventProcessorOr, LambdaStackHandler.eventHandler) _
 
@@ -114,6 +116,7 @@ object LambdaStackHandler {
       system: ActorSystem,
       iamCapabilities: IAMCapabilityEnabled,
       cFServiceRoleName: CFServiceRoleName,
+      changeSetNamePrefix: ChangeSetNamePrefix,
       externalSNSArn: ExternalNotifySNSArn): EventProcessor Or Every[AutomationError] = {
     val eventProcessorOpt: Option[EventProcessor] = for {
       assumeRoleName <- envFetch("IAM_ASSUME_ROLE_NAME")
@@ -123,6 +126,7 @@ object LambdaStackHandler {
         CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(system,
                                                                            iamCapabilities,
                                                                            cFServiceRoleName,
+                                                                           changeSetNamePrefix,
                                                                            snsEventsArn),
         DeletedEvent -> DeleteStackExecutorDefaultFunctions
       )

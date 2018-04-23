@@ -20,6 +20,10 @@ Parameters:
     Description: "The name of the CloudFormation service role in each account that is used by CF for managing the resources. Leave EMPTY if wish to use the CFAccessRoleName's role to also manage the resources (no service role). This role must be passable by the CFAccessRoleName and assumable by CloudFormation"
     Type: String
     Default: ""
+  StackChangeSetPrefix:
+    Description: "The naming prefix applied to the stack change sets. This is useful to lock down teams' automation deployers and roles to only be able to execute change sets that belong to them. If not set, the change set name will be: cf-deployer-automation. If it is set the value will be prepended to the following: ${yourvalue}-cf-deployer-automation"
+    Type: String
+    Default: ""
   SemanticStackNaming:
     Description: "Forces semantic stack naming, even when stacks provide their own StackName. This is highly recommended, otherwise two stacks that accidentally specify the same name will overwrite each other"
     Type: String
@@ -50,6 +54,7 @@ Parameters:
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
   HasCFServiceRole: !Not [!Equals [!Ref CFServiceRoleName, ""]]
+  HasStackChageSetPrefix: !Not [!Equals [!Ref StackChangeSetPrefix, ""]]
 
 Resources:
   S3CreateUpdateEventsTopic:
@@ -309,6 +314,7 @@ Resources:
           IAM_ASSUME_ROLE_NAME: !Ref CFAccessRoleName
           IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
+          CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
       Role: !GetAtt LambdaStackMgmtRole.Arn
       Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::createUpdateHandler
       Events:
@@ -337,6 +343,7 @@ Resources:
           IAM_ASSUME_ROLE_NAME: !Ref CFAccessRoleName
           IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
+          CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
       Role: !GetAtt LambdaStackMgmtRole.Arn
       Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::deleteHandler
       Events:
