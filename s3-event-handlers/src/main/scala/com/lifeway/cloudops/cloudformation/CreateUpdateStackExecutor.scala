@@ -19,7 +19,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 import akka.pattern.after
-import com.lifeway.cloudops.cloudformation.Types.{CFServiceRoleName, IAMCapabilityEnabled, SNSArn}
+import com.lifeway.cloudops.cloudformation.Types.{CFServiceRoleName, ChangeSetNamePrefix, IAMCapabilityEnabled, SNSArn}
 import org.scalactic.{Bad, Good, Or}
 import org.slf4j.LoggerFactory
 
@@ -40,38 +40,42 @@ import scala.util.{Failure, Success, Try}
 class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
                                                 iam: IAMCapabilityEnabled,
                                                 cfServiceRoleName: CFServiceRoleName,
+                                                changeSetNamePrefix: ChangeSetNamePrefix,
                                                 val snsARN: SNSArn)
     extends StackExecutor {
   override val execute: (AmazonCloudFormation, StackConfig, S3File) => Unit Or AutomationError = {
-    CreateUpdateStackExecutor.execute()(actorSystem, iam, cfServiceRoleName, snsARN)
+    CreateUpdateStackExecutor.execute()(actorSystem, iam, cfServiceRoleName, changeSetNamePrefix, snsARN)
   }
 }
 // $COVERAGE-ON$
 
 object CreateUpdateStackExecutor {
-  val ChangeSetName = "cloudformation-automation"
-  val logger        = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.CreateUpdateStackExecutor")
+  val ChangeSetNamePostfix = "cf-deployer-automation"
+  val logger               = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.CreateUpdateStackExecutor")
 
   def execute(changeSetReady: (AmazonCloudFormation, ActorSystem) => (String, String) => Unit Or AutomationError =
                 (cf, as) => waitForChangeSetReady(cf, as),
               capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
+              changeSetName: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
               changeSetType: (AmazonCloudFormation, StackConfig) => Try[ChangeSetType] = determineChangeSetType,
               getSSMParam: String => Or[String, SSMError] = DefaultSSMUtil.getSSMParam)(
       actorSystem: ActorSystem,
       iam: IAMCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
+      changeSetNamePrefix: ChangeSetNamePrefix,
       snsARN: SNSArn)(cfClient: AmazonCloudFormation, config: StackConfig, s3File: S3File): Unit Or AutomationError = {
 
     val tags: Seq[AWSTag] =
       config.tags.map(_.map(x => new AWSTag().withKey(x.key).withValue(x.value))).getOrElse(Seq.empty)
     val parameters: Seq[AWSParam] =
       config.parameters
-        .map(_.map{ param =>
-          param.paramType.fold(new AWSParam().withParameterKey(param.name).withParameterValue(param.value)){
-            case "SSM" => getSSMParam(param.value).fold(
-              ssmValue => new AWSParam().withParameterKey(param.name).withParameterValue(ssmValue),
-              _ => return Bad(StackConfigError(s"Unable to retrieve parameter from SSM: ${param.value}"))
-            )
+        .map(_.map { param =>
+          param.paramType.fold(new AWSParam().withParameterKey(param.name).withParameterValue(param.value)) {
+            case "SSM" =>
+              getSSMParam(param.value).fold(
+                ssmValue => new AWSParam().withParameterKey(param.name).withParameterValue(ssmValue),
+                _ => return Bad(StackConfigError(s"Unable to retrieve parameter from SSM: ${param.value}"))
+              )
             case _ => new AWSParam().withParameterKey(param.name).withParameterValue(param.value)
           }
         })
@@ -89,7 +93,7 @@ object CreateUpdateStackExecutor {
           .fold(new CreateChangeSetRequest())(serviceRoleName =>
             new CreateChangeSetRequest().withRoleARN(buildStackServiceRoleArn(serviceRoleName, s3File)))
           .withCapabilities(capabilities(iam): _*)
-          .withChangeSetName(ChangeSetName)
+          .withChangeSetName(changeSetName(changeSetNamePrefix))
           .withChangeSetType(s)
           .withDescription(s"From CF Automation File: ${s3File.key}")
           .withTemplateURL(s"https://s3.amazonaws.com/${s3File.bucket}/templates/${config.template}")
@@ -112,6 +116,9 @@ object CreateUpdateStackExecutor {
       }
     )
   }
+
+  def changeSetNameBuilder(namePrefix: ChangeSetNamePrefix): String =
+    namePrefix.fold(ChangeSetNamePostfix)(prefix => s"$prefix-$ChangeSetNamePostfix")
 
   def capabilitiesBuilder(iam: IAMCapabilityEnabled): Seq[Capability] =
     if (iam) Seq(Capability.CAPABILITY_NAMED_IAM, Capability.CAPABILITY_IAM) else Seq.empty[Capability]
