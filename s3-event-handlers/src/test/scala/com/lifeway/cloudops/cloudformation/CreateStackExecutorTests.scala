@@ -53,6 +53,18 @@ object CreateStackExecutorTests extends TestSuite {
       }
     }
 
+    'changeSetNameBuilder - {
+      'returnStaticValueWhenNone - {
+        val name = CreateUpdateStackExecutor.changeSetNameBuilder(None)
+        assert(name == CreateUpdateStackExecutor.ChangeSetNamePostfix)
+      }
+
+      'returnWithPrefixWhenSome - {
+        val name = CreateUpdateStackExecutor.changeSetNameBuilder(Some("some-crazy-prefix"))
+        assert(name == s"some-crazy-prefix-${CreateUpdateStackExecutor.ChangeSetNamePostfix}")
+      }
+    }
+
     'waitForChangeSet - {
       def cfClientWithStatus(status: Seq[ChangeSetStatus]): AmazonCloudFormation =
         new CloudFormationTestClient {
@@ -210,7 +222,7 @@ object CreateStackExecutorTests extends TestSuite {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
-                req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
+                req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
                 req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
@@ -230,8 +242,9 @@ object CreateStackExecutorTests extends TestSuite {
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetName = _ => "my-change-set-name",
           changeSetType = (_, _) => Success(ChangeSetType.CREATE)
-        )(testSystem, false, Some("some-role-name"), "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -241,7 +254,10 @@ object CreateStackExecutorTests extends TestSuite {
           "demo-stack",
           "demo/template.yaml",
           Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
-          Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true"), Parameter("myTestSSM", "/path/to/secret", Some("SSM"))))
+          Some(
+            Seq(Parameter("myParam", "myValue"),
+                Parameter("myBoolParam", "true"),
+                Parameter("myTestSSM", "/path/to/secret", Some("SSM"))))
         )
         val parameters: Seq[AWSParam] =
           stackConfig.parameters
@@ -254,16 +270,16 @@ object CreateStackExecutorTests extends TestSuite {
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
-              req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
-              req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
-              req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-              req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
-              req.getTemplateURL.equals(
-                s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-              req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
-              req.getStackName.equals(stackConfig.stackName) &&
-              req.getParameters.size.equals(parameters.size) &&
-              req.getTags.equals(tags.asJava))
+                req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
+                req.getChangeSetName.equals(s"my-change-set-name") &&
+                req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
+                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getTemplateURL.equals(
+                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+                req.getStackName.equals(stackConfig.stackName) &&
+                req.getParameters.size.equals(parameters.size) &&
+                req.getTags.equals(tags.asJava))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
 
@@ -275,9 +291,10 @@ object CreateStackExecutorTests extends TestSuite {
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetName = _ => "my-change-set-name",
           changeSetType = (_, _) => Success(ChangeSetType.CREATE),
           getSSMParam = getSSM
-        )(testSystem, false, Some("some-role-name"), "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -287,7 +304,10 @@ object CreateStackExecutorTests extends TestSuite {
           "demo-stack",
           "demo/template.yaml",
           Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
-          Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true"), Parameter("someParam", "someValue", Some("NO_BUENO"))))
+          Some(
+            Seq(Parameter("myParam", "myValue"),
+                Parameter("myBoolParam", "true"),
+                Parameter("someParam", "someValue", Some("NO_BUENO"))))
         )
         val parameters: Seq[AWSParam] =
           stackConfig.parameters
@@ -300,16 +320,16 @@ object CreateStackExecutorTests extends TestSuite {
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
-              req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
-              req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
-              req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-              req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
-              req.getTemplateURL.equals(
-                s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-              req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
-              req.getStackName.equals(stackConfig.stackName) &&
-              req.getParameters.size.equals(parameters.size) &&
-              req.getTags.equals(tags.asJava))
+                req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
+                req.getChangeSetName.equals(s"my-change-set-name") &&
+                req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
+                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getTemplateURL.equals(
+                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+                req.getStackName.equals(stackConfig.stackName) &&
+                req.getParameters.size.equals(parameters.size) &&
+                req.getTags.equals(tags.asJava))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
 
@@ -321,9 +341,10 @@ object CreateStackExecutorTests extends TestSuite {
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetName = _ => "my-change-set-name",
           changeSetType = (_, _) => Success(ChangeSetType.CREATE),
           getSSMParam = getSSM
-        )(testSystem, false, Some("some-role-name"), "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -333,7 +354,10 @@ object CreateStackExecutorTests extends TestSuite {
           "demo-stack",
           "demo/template.yaml",
           Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
-          Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true"), Parameter("myTestSSM", "/bad/path/to/secret", Some("SSM"))))
+          Some(
+            Seq(Parameter("myParam", "myValue"),
+                Parameter("myBoolParam", "true"),
+                Parameter("myTestSSM", "/bad/path/to/secret", Some("SSM"))))
         )
         val parameters: Seq[AWSParam] =
           stackConfig.parameters
@@ -346,16 +370,16 @@ object CreateStackExecutorTests extends TestSuite {
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
-              req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
-              req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
-              req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-              req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
-              req.getTemplateURL.equals(
-                s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-              req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
-              req.getStackName.equals(stackConfig.stackName) &&
-              req.getParameters.size.equals(parameters.size) &&
-              req.getTags.equals(tags.asJava))
+                req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
+                req.getChangeSetName.equals(s"my-change-set-name") &&
+                req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
+                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getTemplateURL.equals(
+                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+                req.getStackName.equals(stackConfig.stackName) &&
+                req.getParameters.size.equals(parameters.size) &&
+                req.getTags.equals(tags.asJava))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
 
@@ -367,9 +391,10 @@ object CreateStackExecutorTests extends TestSuite {
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetName = _ => "my-change-set-name",
           changeSetType = (_, _) => Success(ChangeSetType.CREATE),
           getSSMParam = getSSM
-        )(testSystem, false, Some("some-role-name"), "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackConfigError("Unable to retrieve parameter from SSM: /bad/path/to/secret")))
       }
@@ -379,7 +404,7 @@ object CreateStackExecutorTests extends TestSuite {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
                 Option(req.getRoleARN).isEmpty &&
-                req.getChangeSetName.equals(CreateUpdateStackExecutor.ChangeSetName) &&
+                req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
                 req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
@@ -399,8 +424,9 @@ object CreateStackExecutorTests extends TestSuite {
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetName = _ => "my-change-set-name",
           changeSetType = (_, _) => Success(ChangeSetType.CREATE)
-        )(testSystem, false, None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(testSystem, false, None, None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -414,13 +440,12 @@ object CreateStackExecutorTests extends TestSuite {
             new ExecuteChangeSetResult()
         }
 
-        val result = CreateUpdateStackExecutor.execute(changeSetReady = (_, _) => (_, _) => Bad(StackError("boom")),
-                                                       capabilities = _ => Seq.empty,
-                                                       changeSetType = (_, _) => Success(ChangeSetType.CREATE))(
-          testSystem,
-          false,
-          Some("some-role-arn"),
-          "some-sns-arn")(cfClient, stackConfig, s3File)
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Bad(StackError("boom")),
+          capabilities = _ => Seq.empty,
+          changeSetName = _ => "my-change-set-name",
+          changeSetType = (_, _) => Success(ChangeSetType.CREATE)
+        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
       }
@@ -434,13 +459,12 @@ object CreateStackExecutorTests extends TestSuite {
             new ExecuteChangeSetResult()
         }
 
-        val result = CreateUpdateStackExecutor.execute(changeSetReady = (_, _) => (_, _) => Good(()),
-                                                       capabilities = _ => Seq.empty,
-                                                       changeSetType = (_, _) => Failure(new Exception("boom")))(
-          testSystem,
-          false,
-          Some("some-role-arn"),
-          "some-sns-arn")(cfClient, stackConfig, s3File)
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          capabilities = _ => Seq.empty,
+          changeSetName = _ => "my-change-set-name",
+          changeSetType = (_, _) => Failure(new Exception("boom"))
+        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(
           result == Bad(
@@ -456,13 +480,12 @@ object CreateStackExecutorTests extends TestSuite {
             new ExecuteChangeSetResult()
         }
 
-        val result = CreateUpdateStackExecutor.execute(changeSetReady = (_, _) => (_, _) => Good(()),
-                                                       capabilities = _ => Seq.empty,
-                                                       changeSetType = (_, _) => Success(ChangeSetType.CREATE))(
-          testSystem,
-          false,
-          Some("some-role-arn"),
-          "some-sns-arn")(cfClient, stackConfig, s3File)
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          capabilities = _ => Seq.empty,
+          changeSetName = _ => "my-change-set-name",
+          changeSetType = (_, _) => Success(ChangeSetType.CREATE)
+        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError(
           "Failed to create change set and execute it for: stacks/my-account-name.123456789/my/stack/path.yaml. Reason: boom (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
