@@ -87,10 +87,7 @@ object LambdaStackHandler {
       eventProcessor <- eventProcessorOr
       eventHandled   <- eventHandlerFun(eventProcessor, eventType, event)
     } yield eventHandled).fold(
-      good => {
-        println("it was good!")
-        good
-      },
+      good => good,
       everyBad => throw new Exception(everyBad.mkString("/n"))
     )
 

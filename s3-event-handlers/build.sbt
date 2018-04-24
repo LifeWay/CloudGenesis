@@ -35,6 +35,8 @@ coverageFailOnMinimum := true
 
 enablePlugins(JavaAppPackaging)
 
+addCommandAlias("testcoverage", "; reload; clean; compile; coverage; test; coverageReport; reload")
+
 /**
   * Native Packager config for AWS Lambda:
   * 1.) no top level directory in the zip
