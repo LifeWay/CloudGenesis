@@ -5,10 +5,13 @@ import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.model.{
   AmazonCloudFormationException,
   Capability,
+  ChangeSetNotFoundException,
   ChangeSetStatus,
   ChangeSetType,
   CreateChangeSetRequest,
   CreateChangeSetResult,
+  DeleteChangeSetRequest,
+  DeleteChangeSetResult,
   DescribeChangeSetRequest,
   DescribeChangeSetResult,
   DescribeStacksRequest,
@@ -162,7 +165,7 @@ object CreateStackExecutorTests extends TestSuite {
             else throw new IllegalArgumentException
         }
         val result = CreateUpdateStackExecutor.determineChangeSetType(cfClient, stackConfig)
-        assert(result == Success(ChangeSetType.CREATE))
+        assert(result == Good(ChangeSetType.CREATE))
       }
 
       'returnSuccessForCreateAlternate - {
@@ -175,7 +178,7 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.determineChangeSetType(cfClient, stackConfig)
-        assert(result == Success(ChangeSetType.CREATE))
+        assert(result == Good(ChangeSetType.CREATE))
       }
 
       'returnSuccessForUpdate - {
@@ -185,17 +188,27 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.determineChangeSetType(cfClient, stackConfig)
-        assert(result == Success(ChangeSetType.UPDATE))
+        assert(result == Good(ChangeSetType.UPDATE))
       }
 
-      'returnFailureForOtherErrors - {
+      'returnFailureForOtherErrorsFromAWS - {
         val cfClient = new CloudFormationTestClient {
           override def describeStacks(describeStacksRequest: DescribeStacksRequest): DescribeStacksResult =
             throw new AmazonCloudFormationException("boom")
         }
 
         val result = CreateUpdateStackExecutor.determineChangeSetType(cfClient, stackConfig)
-        assert(result.isFailure)
+        assert(result == Bad(StackError("Failed to determine stack change set type via describe stacks request")))
+      }
+
+      'returnFailureForOtherThrowables - {
+        val cfClient = new CloudFormationTestClient {
+          override def describeStacks(describeStacksRequest: DescribeStacksRequest): DescribeStacksResult =
+            throw new Exception("boom")
+        }
+
+        val result = CreateUpdateStackExecutor.determineChangeSetType(cfClient, stackConfig)
+        assert(result == Bad(StackError("Failed to determine stack change set type via describe stacks request")))
       }
     }
 
@@ -206,6 +219,63 @@ object CreateStackExecutorTests extends TestSuite {
         val result = CreateUpdateStackExecutor.buildStackServiceRoleArn("my/role/path", s3File)
 
         assert(result == "arn:aws:iam::123456789:role/my/role/path")
+      }
+    }
+
+    'deleteExistingChangeSetByNameIfExists - {
+      'returnGoodOnChangeSetTypeCreate - {
+        val res =
+          CreateUpdateStackExecutor.deleteExistingChangeSetByNameIfExists(null)(ChangeSetType.CREATE, null, null)
+        assert(res == Good(()))
+      }
+
+      'returnGoodOnChangeSetTypeUpdateWhenChangeSetNameDoesntExist - {
+        val cfClient = new CloudFormationTestClient {
+          override def describeChangeSet(describeChangeSetRequest: DescribeChangeSetRequest): DescribeChangeSetResult =
+            throw new ChangeSetNotFoundException("not found")
+        }
+
+        val res =
+          CreateUpdateStackExecutor.deleteExistingChangeSetByNameIfExists(cfClient)(ChangeSetType.UPDATE,
+                                                                                    "stack-name",
+                                                                                    "change-set-name")
+
+        assert(res == Good(()))
+      }
+
+      'returnGoodOnChangeSetTypeUpdateWhenChangeSetNameExistsAndDeletesSuccessfully - {
+        val cfClient = new CloudFormationTestClient {
+          override def describeChangeSet(describeChangeSetRequest: DescribeChangeSetRequest): DescribeChangeSetResult =
+            new DescribeChangeSetResult().withStackId("some-stack-id")
+
+          override def deleteChangeSet(deleteChangeSetRequest: DeleteChangeSetRequest): DeleteChangeSetResult =
+            if (deleteChangeSetRequest.getChangeSetName == "some-stack-id") new DeleteChangeSetResult
+            else throw new IllegalArgumentException
+        }
+
+        val res =
+          CreateUpdateStackExecutor.deleteExistingChangeSetByNameIfExists(cfClient)(ChangeSetType.UPDATE,
+                                                                                    "stack-name",
+                                                                                    "change-set-name")
+
+        assert(res == Good(()))
+      }
+
+      'returnBadIfErrorDeletingChangeSet - {
+        val cfClient = new CloudFormationTestClient {
+          override def describeChangeSet(describeChangeSetRequest: DescribeChangeSetRequest): DescribeChangeSetResult =
+            new DescribeChangeSetResult().withStackId("some-stack-id")
+
+          override def deleteChangeSet(deleteChangeSetRequest: DeleteChangeSetRequest): DeleteChangeSetResult =
+            throw new Exception("boom")
+        }
+
+        val res =
+          CreateUpdateStackExecutor.deleteExistingChangeSetByNameIfExists(cfClient)(ChangeSetType.UPDATE,
+                                                                                    "stack-name",
+                                                                                    "change-set-name")
+
+        assert(res == Bad(StackError("Failed to delete existing change set. Error Details: boom")))
       }
     }
 
@@ -241,9 +311,10 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Success(ChangeSetType.CREATE)
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
         )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
@@ -290,9 +361,10 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Success(ChangeSetType.CREATE),
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           getSSMParam = getSSM
         )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
@@ -340,9 +412,10 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Success(ChangeSetType.CREATE),
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           getSSMParam = getSSM
         )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
@@ -390,9 +463,10 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Success(ChangeSetType.CREATE),
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           getSSMParam = getSSM
         )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
@@ -423,9 +497,10 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Success(ChangeSetType.CREATE)
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
         )(testSystem, false, None, None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
@@ -442,12 +517,33 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Bad(StackError("boom")),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Success(ChangeSetType.CREATE)
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
         )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
+      }
+
+      'returnBadIfDeleteChangeSetIfExistsFails - {
+        val cfClient = new CloudFormationTestClient {
+          override def createChangeSet(createChangeSetRequest: CreateChangeSetRequest): CreateChangeSetResult =
+            new CreateChangeSetResult()
+
+          override def executeChangeSet(executeChangeSetRequest: ExecuteChangeSetRequest): ExecuteChangeSetResult =
+            new ExecuteChangeSetResult()
+        }
+
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Bad(StackError("delete go boom")),
+          capabilities = _ => Seq.empty,
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
+        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+
+        assert(result == Bad(StackError("delete go boom")))
       }
 
       'returnBadWhenChangeSetTypeFails - {
@@ -461,14 +557,13 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Failure(new Exception("boom"))
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Bad(StackError("boom"))
         )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
-        assert(
-          result == Bad(
-            StackError("Failed to create change set and execute it due to failure determining change set type: boom")))
+        assert(result == Bad(StackError("boom")))
       }
 
       'returnBadWhenCreateChangeSetFails - {
@@ -482,9 +577,10 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
-          changeSetName = _ => "my-change-set-name",
-          changeSetType = (_, _) => Success(ChangeSetType.CREATE)
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
         )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError(
