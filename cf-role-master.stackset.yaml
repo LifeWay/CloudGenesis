@@ -54,6 +54,7 @@ Resources:
                 Resource: "*"
                 Action:
                   - "cloudformation:CreateChangeSet"
+                  - "cloudformation:DeleteChangeSet"
                   - "cloudformation:DeleteStack"
                   - "cloudformation:DescribeChangeSet"
                   - "cloudformation:DescribeStacks"

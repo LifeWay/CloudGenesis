@@ -5,9 +5,11 @@ import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.model.{
   AmazonCloudFormationException,
   Capability,
+  ChangeSetNotFoundException,
   ChangeSetStatus,
   ChangeSetType,
   CreateChangeSetRequest,
+  DeleteChangeSetRequest,
   DescribeChangeSetRequest,
   DescribeStacksRequest,
   ExecuteChangeSetRequest,
@@ -22,8 +24,6 @@ import akka.pattern.after
 import com.lifeway.cloudops.cloudformation.Types.{CFServiceRoleName, ChangeSetNamePrefix, IAMCapabilityEnabled, SNSArn}
 import org.scalactic.{Bad, Good, Or}
 import org.slf4j.LoggerFactory
-
-import scala.util.{Failure, Success, Try}
 
 /**
   * Create stack executor. Given the StackConfig and S3File, do the delete of the given stack. If CF service raises
@@ -53,12 +53,15 @@ object CreateUpdateStackExecutor {
   val ChangeSetNamePostfix = "cf-deployer-automation"
   val logger               = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.CreateUpdateStackExecutor")
 
-  def execute(changeSetReady: (AmazonCloudFormation, ActorSystem) => (String, String) => Unit Or AutomationError =
-                (cf, as) => waitForChangeSetReady(cf, as),
-              capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
-              changeSetName: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
-              changeSetType: (AmazonCloudFormation, StackConfig) => Try[ChangeSetType] = determineChangeSetType,
-              getSSMParam: String => Or[String, SSMError] = DefaultSSMUtil.getSSMParam)(
+  def execute(
+      changeSetReady: (AmazonCloudFormation, ActorSystem) => (String, String) => Unit Or AutomationError = (cf, as) =>
+        waitForChangeSetReady(cf, as),
+      deleteChangeSetIfExists: (AmazonCloudFormation) => (ChangeSetType, String, String) => Unit Or AutomationError =
+        (cf) => deleteExistingChangeSetByNameIfExists(cf),
+      capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
+      changeSetNameBuild: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
+      changeSetType: (AmazonCloudFormation, StackConfig) => ChangeSetType Or AutomationError = determineChangeSetType,
+      getSSMParam: String => Or[String, SSMError] = DefaultSSMUtil.getSSMParam)(
       actorSystem: ActorSystem,
       iam: IAMCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
@@ -81,20 +84,18 @@ object CreateUpdateStackExecutor {
         })
         .getOrElse(Seq.empty)
 
-    changeSetType(cfClient, config).fold(
-      f => {
-        logger.error("Failed to determine change set type", f)
-        Bad(
-          StackError(
-            s"Failed to create change set and execute it due to failure determining change set type: ${f.getMessage}"))
-      },
-      s => {
+    val changeSetName = changeSetNameBuild(changeSetNamePrefix)
+
+    for {
+      changeSetType <- changeSetType(cfClient, config)
+      _             <- deleteChangeSetIfExists(cfClient)(changeSetType, config.stackName, changeSetName)
+      _ <- {
         val changeSetReq = cfServiceRoleName
           .fold(new CreateChangeSetRequest())(serviceRoleName =>
             new CreateChangeSetRequest().withRoleARN(buildStackServiceRoleArn(serviceRoleName, s3File)))
           .withCapabilities(capabilities(iam): _*)
-          .withChangeSetName(changeSetName(changeSetNamePrefix))
-          .withChangeSetType(s)
+          .withChangeSetName(changeSetName)
+          .withChangeSetType(changeSetType)
           .withDescription(s"From CF Automation File: ${s3File.key}")
           .withTemplateURL(s"https://s3.amazonaws.com/${s3File.bucket}/templates/${config.template}")
           .withNotificationARNs(snsARN)
@@ -107,14 +108,17 @@ object CreateUpdateStackExecutor {
           //We must wait for the change set Status to reach CREATE_COMPLETE before continuing.
           for {
             _ <- changeSetReady(cfClient, actorSystem)(changeSet.getId, s3File.key)
-          } yield cfClient.executeChangeSet(new ExecuteChangeSetRequest().withChangeSetName(changeSet.getId))
+          } yield {
+            cfClient.executeChangeSet(new ExecuteChangeSetRequest().withChangeSetName(changeSet.getId))
+            Good(())
+          }
         } catch {
           case e: Throwable =>
             logger.error(s"Failed to create change set and execute it for: ${s3File.key}.", e)
             Bad(StackError(s"Failed to create change set and execute it for: ${s3File.key}. Reason: ${e.getMessage}"))
         }
       }
-    )
+    } yield ()
   }
 
   def changeSetNameBuilder(namePrefix: ChangeSetNamePrefix): String =
@@ -123,26 +127,52 @@ object CreateUpdateStackExecutor {
   def capabilitiesBuilder(iam: IAMCapabilityEnabled): Seq[Capability] =
     if (iam) Seq(Capability.CAPABILITY_NAMED_IAM, Capability.CAPABILITY_IAM) else Seq.empty[Capability]
 
-  def determineChangeSetType(cfClient: AmazonCloudFormation, config: StackConfig): Try[ChangeSetType] =
+  def determineChangeSetType(cfClient: AmazonCloudFormation, config: StackConfig): ChangeSetType Or AutomationError =
     try {
       val stacks = cfClient
         .describeStacks(new DescribeStacksRequest().withStackName(config.stackName))
         .getStacks
         .asScala
         .filterNot(_.getStackStatus == "REVIEW_IN_PROGRESS")
-      if (stacks.isEmpty) Success(ChangeSetType.CREATE) else Success(ChangeSetType.UPDATE)
+      if (stacks.isEmpty) Good(ChangeSetType.CREATE) else Good(ChangeSetType.UPDATE)
     } catch {
       case t: AmazonCloudFormationException =>
         if (t.getStatusCode == 400 && t.getMessage.contains("does not exist"))
-          Success(ChangeSetType.CREATE)
-        else Failure(t)
-      case e: Throwable => Failure(e)
+          Good(ChangeSetType.CREATE)
+        else {
+          logger.error("Failed to determine stack change set type via describe stacks request", t)
+          Bad(StackError("Failed to determine stack change set type via describe stacks request"))
+        }
+      case e: Throwable =>
+        logger.error("Failed to determine stack change set type via describe stacks request", e)
+        Bad(StackError("Failed to determine stack change set type via describe stacks request"))
     }
 
   def buildStackServiceRoleArn(cfServiceRoleName: String, s3File: S3File): String = {
     val accountId = EventProcessor.accountNumberParser(s3File.key)
     s"arn:aws:iam::$accountId:role/$cfServiceRoleName"
   }
+
+  def deleteExistingChangeSetByNameIfExists(cfClient: AmazonCloudFormation)(
+      changeSetType: ChangeSetType,
+      stackName: String,
+      changeSetName: String): Unit Or AutomationError =
+    changeSetType match {
+      case ChangeSetType.CREATE => Good(())
+      case ChangeSetType.UPDATE =>
+        val describeChangeSetReq =
+          new DescribeChangeSetRequest().withChangeSetName(changeSetName).withStackName(stackName)
+        try {
+          val stackId = cfClient.describeChangeSet(describeChangeSetReq).getStackId
+          cfClient.deleteChangeSet(new DeleteChangeSetRequest().withChangeSetName(stackId))
+          Good(())
+        } catch {
+          case _: ChangeSetNotFoundException => Good(())
+          case e: Throwable =>
+            logger.error(s"Failed to delete existing change set.", e)
+            Bad(StackError(s"Failed to delete existing change set. Error Details: ${e.getMessage}"))
+        }
+    }
 
   def waitForChangeSetReady(
       cfClient: AmazonCloudFormation,

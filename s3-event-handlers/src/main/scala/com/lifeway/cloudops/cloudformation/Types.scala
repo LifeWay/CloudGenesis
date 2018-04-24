@@ -40,11 +40,9 @@ case object CreateUpdateEvent extends EventType
 case object DeletedEvent      extends EventType
 
 object EventType {
-  implicit val encoder: Encoder[EventType] = Encoder[EventType] { e =>
-    e match {
-      case CreateUpdateEvent => Json.fromString("CreateUpdateEvent")
-      case DeletedEvent      => Json.fromString("DeletedEvent")
-    }
+  implicit val encoder: Encoder[EventType] = Encoder[EventType] {
+    case CreateUpdateEvent => Json.fromString("CreateUpdateEvent")
+    case DeletedEvent      => Json.fromString("DeletedEvent")
   }
   implicit val decoder: Decoder[EventType] = Decoder[EventType] { c =>
     for {
