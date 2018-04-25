@@ -35,14 +35,34 @@ Resources:
         - PolicyName: "CFAccess"
           PolicyDocument:
             Statement:
+              #CloudFormation Bits for Automated Deployer - locked down to only stacks this team can manage.
               - Effect: Allow
                 Resource: "*"
                 Action:
-                  - "cloudformation:CreateChangeSet"
-                  - "cloudformation:DeleteStack"
                   - "cloudformation:DescribeChangeSet"
                   - "cloudformation:DescribeStacks"
+              - Effect: Allow
+                Action:
+                  - "cloudformation:CreateChangeSet"
+                Resource:
+                  - "arn:aws:cloudformation:*:*:stack/*"  #TODO: Lock this down to naming patterns that match this team's stack names.
+                  - "arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31"
+              - Effect: Allow
+                Action:
+                  - "cloudformation:DeleteChangeSet"
                   - "cloudformation:ExecuteChangeSet"
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    cloudformation:ChangeSetName:
+                      - "arn:aws:cloudformation:*:*:changeSet/*" #TODO: Lock this down to naming patterns that match this team's stack names.
+              - Action:
+                  - "cloudformation:DeleteStack"
+                Effect: Allow
+                Resource:
+                  - "arn:aws:cloudformation:*:*:stack/*" #TODO: Lock this down to naming patterns that match this team's stack names.
+
+              # Access to S3 bucket of templates for CloudFormation to pull
               - Effect: Allow
                 Action:
                   - "s3:GetObject"
