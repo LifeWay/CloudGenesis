@@ -1,0 +1,56 @@
+#
+# This template creates the ECR Repo and perm needed for the Deployer's codebuild image.
+# You are still required to build the image and push it to the repo built by this stack!!
+#
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  RepositoryName:
+    Description: "The name and/or path you wish to give the ECR Repo. Leave blank if you want it auto-generated."
+    Type: String
+    Default: ""
+
+Conditions:
+  HasRepoName: !Not [!Equals [!Ref RepositoryName, ""]]
+
+Resources:
+  CFAutomationBuildImage:
+    Type: "AWS::ECR::Repository"
+    Properties:
+      RepositoryName: !If [HasRepoName, !Ref RepositoryName, !Ref "AWS::NoValue"]
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CodeBuildAccess
+            Effect: Allow
+            Principal:
+              Service: "codebuild.amazonaws.com"
+            Action:
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "ecr:BatchCheckLayerAvailability"
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                  "rulePriority": 1,
+                  "description": "Expire untagged images older than 14 days",
+                  "selection": {
+                      "tagStatus": "untagged",
+                      "countType": "sinceImagePushed",
+                      "countUnit": "days",
+                      "countNumber": 14
+                  },
+                  "action": {
+                      "type": "expire"
+                  }
+              }
+            ]
+          }
+
+Outputs:
+  CFAutomationBuildImage:
+    Value: !Ref CFAutomationBuildImage
+    Export:
+      Name: "CloudFormation-GitDeploy:ECRBuildImageName"
