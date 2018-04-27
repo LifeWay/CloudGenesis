@@ -5,6 +5,66 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
+Description: "CloudFormation-GitDeploy: Automated CloudFormation Management from Git Source"
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Main Configuration
+        Parameters:
+          - AccountIds
+          - AllowIAMCapabilities
+          - CFAccessRoleName
+          - CFServiceRoleName
+          - SSMPath
+          - SemanticStackNaming
+      - Label:
+          default: Git Source
+        Parameters:
+          - GithubRepoName
+          - GithubRepoOwner
+          - GitHubToken
+      - Label:
+          default: Slack & Email Configuration
+        Parameters:
+          - SlackChannel
+          - SlackWebHookUrl
+          - EmailContact
+      - Label:
+          default: Optional Configuration
+        Parameters:
+          - StackChangeSetPrefix
+          - ExternalNotificationSNSArn
+          - TrackingTagPrefix
+    ParameterLabels:
+      AccountIds:
+        default: AWS Account ID's
+      AllowIAMCapabilities:
+        default: CloudFormation IAM Capabilities Enabled?
+      SSMPath:
+        default: SSM Path Prefix
+      SlackChannel:
+        default: Slack Channel Name
+      SlackWebHookUrl:
+        default: Slack Web Hook URL
+      EmailContact:
+        default: Email Content (slack fallback)
+      StackChangeSetPrefix:
+        default: Stack Change Set Prefix
+      SemanticStackNaming:
+        default: Force Semantic Stack Naming? (Recommended)
+      ExternalNotificationSNSArn:
+        default: External SNS Notification ARN
+      TrackingTagPrefix:
+        default: Tracking Tag Prefix
+      GithubRepoName:
+        default: GitHub Repository Name
+      GithubRepoOwner:
+        default: GitHub Repository Owner
+      GitHubToken:
+        default: GitHub Personal Access Token
+
+
 Parameters:
   AllowIAMCapabilities:
     Description: "CloudFormation has an IAM safe guard built in. If this is false, no IAM resources can be created even if the policy arns allow it"
@@ -17,11 +77,11 @@ Parameters:
     Description: "The name of the role in each account that the deployer assumes for access to CloudFormation"
     Type: String
   CFServiceRoleName:
-    Description: "The name of the CloudFormation service role in each account that is used by CF for managing the resources. Leave EMPTY if wish to use the CFAccessRoleName's role to also manage the resources (no service role). This role must be passable by the CFAccessRoleName and assumable by CloudFormation"
+    Description: "(Optional): The name of the CloudFormation service role in each account that is used by CF for managing the resources. Leave EMPTY if wish to use the CFAccessRoleName's role to also manage the resources (no service role). This role must be passable by the CFAccessRoleName and assumable by CloudFormation"
     Type: String
     Default: ""
   StackChangeSetPrefix:
-    Description: "The naming prefix applied to the stack change sets. This is useful to lock down teams' automation deployers and roles to only be able to execute change sets that belong to them. If not set, the change set name will be: cf-deployer-automation. If it is set the value will be prepended to the following: ${yourvalue}-cf-deployer-automation"
+    Description: "(Optional): The naming prefix applied to the the name of stack change sets. This is useful to lock down teams' automation deployers and roles to only be able to execute change sets that belong to them. If not set, the change set name will be: cf-deployer-automation. If it is set the value will be prepended to the following: ${yourvalue}-cf-deployer-automation"
     Type: String
     Default: ""
   SemanticStackNaming:
@@ -32,29 +92,46 @@ Parameters:
       - "true"
       - "false"
   AccountIds:
-    Description: "The list of account ID's that can be automatically deployed to. Needed for those accounts to access the S3 bucket for templates and emit SNS events from CloudFormation"
+    Description: "The comma delimited list of account ID's that can this deployer can automatically deployed to."
     Type: CommaDelimitedList
   ExternalNotificationSNSArn:
-    Description: "The SNS arn to publish events to that contain a record of the change that is occurring by the automation. Leave empty if not used."
+    Description: "(Optional): The SNS arn to publish events to that contain a record of the change that is occurring by the automation. Leave empty if not used."
     Type: String
     Default: ""
   SlackWebHookUrl:
-    Description: Slack webhook URL; see https://example.slack.com/apps/
+    Description: "Slack webhook URL; see https://example.slack.com/apps/"
     Type: String
   SlackChannel:
-    Description: Slack Channel name to post to
+    Description: "Slack Channel name to post to"
     Type: String
   EmailContact:
-    Description: Email to send unhandled errors (when Slack's API is down)
+    Description: "Email to send unhandled errors (when Slack's API is down)"
     Type: String
   SSMPath:
     Type: String
-    Description: Base path to SSM secrets needed by deployer (ie. "/cf-automation/${StackName}/*")
+    Description: 'Base path to SSM secrets needed by deployer (e.g. "/cf-automation/${StackName}/*")'
+  TrackingTagPrefix:
+    Type: String
+    Description: "(Optional): Every stack launched has a tag automatically added to the stack so you what stack file the stack was created from. Use this prefix to prepend to that path other useful information such as what repo the stack came from or what deployer it came from.  If you use multiple deployers and git repos, this is recommended to use this to identify which one."
+    Default: ""
+
+  # TODO: Add support for CodeCommit
+  GithubRepoName:
+    Description: The name of the repo (As seen on GitHub.com)
+    Type: String
+  GithubRepoOwner:
+    Description: The owner of the repo (As seen on Github.com)
+    Type: String
+  GitHubToken:
+    Type: String
+    NoEcho: True
+    Description: GitHub repository OAuth token - this is a GitHub Personal Access Token. All Git actions will appear as from the owner of this token.
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
   HasCFServiceRole: !Not [!Equals [!Ref CFServiceRoleName, ""]]
   HasStackChageSetPrefix: !Not [!Equals [!Ref StackChangeSetPrefix, ""]]
+  HasTrackingTagPrefix: !Not [!Equals [!Ref TrackingTagPrefix, ""]]
 
 Resources:
   S3CreateUpdateEventsTopic:
@@ -315,6 +392,7 @@ Resources:
           IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
           CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
+          TRACKING_TAG_PREFIX: !If [HasTrackingTagPrefix, !Ref TrackingTagPrefix, !Ref "AWS::NoValue"]
       Role: !GetAtt LambdaStackMgmtRole.Arn
       Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::createUpdateHandler
       Events:
@@ -344,6 +422,7 @@ Resources:
           IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
           CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
+          TRACKING_TAG_PREFIX: !If [HasTrackingTagPrefix, !Ref TrackingTagPrefix, !Ref "AWS::NoValue"]
       Role: !GetAtt LambdaStackMgmtRole.Arn
       Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::deleteHandler
       Events:
@@ -470,16 +549,213 @@ Resources:
         SourceArn:
           Ref: BuildStatusTopic
 
-Outputs:
-  S3Bucket:
-    Value: !Ref CloudFormationSyncBucket
-    Export:
-      Name: !Sub "CloudFormationDeployer:${AWS::StackName}:S3Bucket"
-  S3BucketArn:
-    Value: !GetAtt CloudFormationSyncBucket.Arn
-    Export:
-      Name: !Sub "CloudFormationDeployer:${AWS::StackName}:S3BucketArn"
-  BuildStatusSNSArn:
-    Value: !Ref BuildStatusTopic
-    Export:
-      Name: !Sub "CloudFormationDeployer:${AWS::StackName}:BuildStatusSNSArn"
+
+
+  #
+  # CODE PIPELINE & PR BUILDER
+  #
+  CodePipelineBuildArtifactsBucket:
+    Type: AWS::S3::Bucket
+
+  PipelineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+            - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CodePipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 'codebuild:StartBuild'
+                  - 'codebuild:BatchGetBuilds'
+                Effect: Allow
+                Resource:
+                  - !GetAtt CodeBuildProject.Arn
+              - Action:
+                  - 's3:*'
+                Effect: Allow
+                Resource:
+                  - !Sub 'arn:aws:s3:::${CodePipelineBuildArtifactsBucket}/*'
+              - Action:
+                  - 'iam:PassRole'
+                Effect: Allow
+                Resource:
+                  - !GetAtt CodeBuildServiceRole.Arn
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+              - Effect: Allow
+                Resource:
+                  - !Join
+                    - ""
+                    - - "arn:aws:s3:::"
+                      - !Ref CloudFormationSyncBucket
+                      - "/*"
+                  - !GetAtt CloudFormationSyncBucket.Arn
+                Action:
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+              - Effect: Allow
+                Resource:
+                  - !Sub 'arn:aws:s3:::${CodePipelineBuildArtifactsBucket}/*'
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetObjectVersion'
+                  - 's3:PutObject'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:ValidateTemplate'
+                Resource: "*"
+
+  #
+  # CODE BUILD
+  #
+  CodeBuildPRBuilder:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub '${AWS::StackName}-build-pr'
+      Description: !Sub '${AWS::StackName}-pr-build'
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image:
+          !Sub
+            - "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/${RepoName}"
+            - RepoName:
+                Fn::ImportValue: "CloudFormation-GitDeploy:ECRBuildImageName"
+        EnvironmentVariables:
+          - Name: S3_BUCKET_NAME
+            Value: !Ref CloudFormationSyncBucket
+            Type: PLAINTEXT
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Source:
+        Type: GITHUB
+        Auth:
+          Type: OAUTH
+        BuildSpec: buildspec-pr.yml
+        GitCloneDepth: 5
+        Location: !Sub "https://github.com/${GithubRepoOwner}/${GithubRepoName}.git"
+      Triggers:
+        Webhook: true
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub '${AWS::StackName}-build'
+      Description: !Sub '${AWS::StackName}-pipeline-build'
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image:
+          !Sub
+            - "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/${RepoName}"
+            - RepoName:
+                Fn::ImportValue: "CloudFormation-GitDeploy:ECRBuildImageName"
+        EnvironmentVariables:
+          - Name: S3_BUCKET_NAME
+            Value: !Ref CloudFormationSyncBucket
+            Type: PLAINTEXT
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-sync.yml
+
+  EventRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      EventPattern:
+        source:
+          - "aws.codebuild"
+        detail-type:
+          - "CodeBuild Build State Change"
+        detail:
+          build-status:
+            - FAILED
+            - IN_PROGRESS
+            - STOPPED
+            - SUCCEEDED
+          project-name:
+            - !Ref CodeBuildProject
+      State: ENABLED
+      Targets:
+        - Arn: !Ref BuildStatusTopic
+          Id: "sns-notify"
+
+  #
+  # CODE PIPELINE
+  #
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref CodePipelineBuildArtifactsBucket
+        Type: S3
+      Name: !Sub "${AWS::StackName}-pipeline"
+      RoleArn: !GetAtt PipelineExecutionRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHubRepo
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: 1
+              Configuration:
+                Owner: !Ref GithubRepoOwner
+                Repo: !Ref GithubRepoName
+                Branch: master
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: SourceZip
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceZip

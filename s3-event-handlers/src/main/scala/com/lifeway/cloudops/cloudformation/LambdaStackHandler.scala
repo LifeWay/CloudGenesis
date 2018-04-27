@@ -31,18 +31,24 @@ class LambdaStackHandler {
   val snsExternalNotifyTopicArn: ExternalNotifySNSArn = sys.env.get("SNS_EXTERNAL_TOPIC_NOTIFY_ARN")
   val cfServiceRoleName: CFServiceRoleName            = sys.env.get("IAM_CF_SERVICE_ROLE_NAME")
   val changeSetNamePrefix: ChangeSetNamePrefix        = sys.env.get("CF_CHANGE_SET_NAME_PREFIX")
+  val trackingTagName: TrackingTagName                = sys.env.getOrElse("TRACKING_TAG_NAME", "CloudFormation-GitDeploy:stack-file")
+  val trackingTagValuePrefix: TrackingTagValuePrefix  = sys.env.get("TRACKING_TAG_PREFIX")
   val system                                          = ActorSystem("SchedulerSystem")
   val eventProcessorOr: EventProcessor Or Every[AutomationError] =
     LambdaStackHandler.loadEventProcessor(varName =>
-      sys.env.get(varName).flatMap(x => if (x.isEmpty) None else Some(x)))(stsClient,
-                                                                           s3Client,
-                                                                           snsClient,
-                                                                           semanticStackNaming,
-                                                                           system,
-                                                                           iamCapabilities,
-                                                                           cfServiceRoleName,
-                                                                           changeSetNamePrefix,
-                                                                           snsExternalNotifyTopicArn)
+      sys.env.get(varName).flatMap(x => if (x.isEmpty) None else Some(x)))(
+      stsClient,
+      s3Client,
+      snsClient,
+      semanticStackNaming,
+      system,
+      iamCapabilities,
+      cfServiceRoleName,
+      changeSetNamePrefix,
+      trackingTagName,
+      trackingTagValuePrefix,
+      snsExternalNotifyTopicArn
+    )
   val handler = LambdaStackHandler.lambdaHandler(eventProcessorOr, LambdaStackHandler.eventHandler) _
 
   /**
@@ -65,6 +71,7 @@ class LambdaStackHandler {
     */
   def deleteHandler(event: SNSEvent, ctx: Context): Unit = handler(DeletedEvent, event)
 }
+
 // $COVERAGE-ON$
 
 object LambdaStackHandler {
@@ -114,7 +121,10 @@ object LambdaStackHandler {
       iamCapabilities: IAMCapabilityEnabled,
       cFServiceRoleName: CFServiceRoleName,
       changeSetNamePrefix: ChangeSetNamePrefix,
-      externalSNSArn: ExternalNotifySNSArn): EventProcessor Or Every[AutomationError] = {
+      trackingTagName: TrackingTagName,
+      trackingTagValuePrefix: TrackingTagValuePrefix,
+      externalSNSArn: ExternalNotifySNSArn
+  ): EventProcessor Or Every[AutomationError] = {
     val eventProcessorOpt: Option[EventProcessor] = for {
       assumeRoleName <- envFetch("IAM_ASSUME_ROLE_NAME")
       snsEventsArn   <- envFetch("CF_EVENTS_TOPIC_ARN")
@@ -124,6 +134,8 @@ object LambdaStackHandler {
                                                                            iamCapabilities,
                                                                            cFServiceRoleName,
                                                                            changeSetNamePrefix,
+                                                                           trackingTagName,
+                                                                           trackingTagValuePrefix,
                                                                            snsEventsArn),
         DeletedEvent -> DeleteStackExecutorDefaultFunctions
       )
