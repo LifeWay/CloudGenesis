@@ -69,6 +69,8 @@ object LambdaStackHandlerTests extends TestSuite {
                                                                         iamCapabilities = true,
                                                                         null,
                                                                         null,
+                                                                        null,
+                                                                        null,
                                                                         null)
         assert(processor.isGood)
       }
@@ -86,6 +88,8 @@ object LambdaStackHandlerTests extends TestSuite {
                                                                         semanticStackNaming = true,
                                                                         null,
                                                                         iamCapabilities = true,
+                                                                        null,
+                                                                        null,
                                                                         null,
                                                                         null,
                                                                         null)

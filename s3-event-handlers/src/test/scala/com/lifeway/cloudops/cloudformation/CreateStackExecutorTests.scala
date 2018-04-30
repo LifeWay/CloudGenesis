@@ -23,6 +23,7 @@ import com.amazonaws.services.cloudformation.model.{
   Parameter => AWSParam,
   Tag => AWSTag
 }
+import com.lifeway.cloudops.cloudformation.Types.TrackingTagValuePrefix
 import org.scalactic.{Bad, Good}
 
 import scala.collection.JavaConverters._
@@ -222,6 +223,52 @@ object CreateStackExecutorTests extends TestSuite {
       }
     }
 
+    'trackingTagBuilder - {
+      'buildTagWithPrefixWhenProvided - {
+        val tagName                           = "my-custom-tag-name"
+        val tagPrefix: TrackingTagValuePrefix = Some("https://github.com/someorg/somerepo/templates/")
+        val s3File                            = S3File("some-bucket", "some/really/long/file/path.yaml", "123456789", CreateUpdateEvent)
+
+        val res = CreateUpdateStackExecutor.trackingTagBuilder(tagName, tagPrefix)(s3File)
+        assert(
+          res == new AWSTag()
+            .withKey(tagName)
+            .withValue("https://github.com/someorg/somerepo/templates/some/really/long/file/path.yaml"))
+
+      }
+
+      'buildTagWithoutPrefixWhenEmpty - {
+        val tagName                           = "my-custom-tag-name"
+        val tagPrefix: TrackingTagValuePrefix = None
+        val s3File                            = S3File("some-bucket", "some/really/long/file/path.yaml", "123456789", CreateUpdateEvent)
+
+        val res = CreateUpdateStackExecutor.trackingTagBuilder(tagName, tagPrefix)(s3File)
+        assert(
+          res == new AWSTag()
+            .withKey(tagName)
+            .withValue("some/really/long/file/path.yaml"))
+      }
+
+      'trimTagLengthTo255Chars - {
+        val tagName                           = "my-custom-tag-name"
+        val tagPrefix: TrackingTagValuePrefix = Some("https://github.com/someorg/somerepo/templates/")
+        val s3File = S3File(
+          "some-bucket",
+          "some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path.yaml",
+          "123456789",
+          CreateUpdateEvent
+        )
+
+        val res = CreateUpdateStackExecutor.trackingTagBuilder(tagName, tagPrefix)(s3File)
+        assert(
+          res == new AWSTag()
+            .withKey(tagName)
+            .withValue(
+              "https://github.com/someorg/somerepo/templates/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/file/path/some/really/long/fil"))
+
+      }
+    }
+
     'deleteExistingChangeSetByNameIfExists - {
       'returnGoodOnChangeSetTypeCreate - {
         val res =
@@ -287,9 +334,12 @@ object CreateStackExecutorTests extends TestSuite {
       val tags: Seq[AWSTag] =
         stackConfig.tags.map(_.map(x => new AWSTag().withKey(x.key).withValue(x.value))).getOrElse(Seq.empty)
 
+      val autoTag = new AWSTag().withKey("auto-tag-key").withValue("auto-tag-value")
+
       'returnGoodWhenSuccessfulWithServiceRole - {
         val cfClient = new CloudFormationTestClient {
-          override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
+          override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult = {
+            println(req.getTags)
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
@@ -300,9 +350,11 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.equals(parameters.asJava) &&
-                req.getTags.equals(tags.asJava))
+                req.getTags.containsAll(tags.asJava) &&
+                req.getTags.contains(autoTag))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
+          }
 
           override def executeChangeSet(req: ExecuteChangeSetRequest): ExecuteChangeSetResult =
             if (req.getChangeSetName.equals("this-change-set-id")) new ExecuteChangeSetResult()
@@ -315,7 +367,7 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE)
-        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -350,7 +402,8 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.size.equals(parameters.size) &&
-                req.getTags.equals(tags.asJava))
+                req.getTags.containsAll(tags.asJava) &&
+                req.getTags.contains(autoTag))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
 
@@ -366,7 +419,7 @@ object CreateStackExecutorTests extends TestSuite {
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           getSSMParam = getSSM
-        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -401,7 +454,8 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.size.equals(parameters.size) &&
-                req.getTags.equals(tags.asJava))
+                req.getTags.containsAll(tags.asJava) &&
+                req.getTags.contains(autoTag))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
 
@@ -417,7 +471,7 @@ object CreateStackExecutorTests extends TestSuite {
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           getSSMParam = getSSM
-        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -452,7 +506,8 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.size.equals(parameters.size) &&
-                req.getTags.equals(tags.asJava))
+                req.getTags.containsAll(tags.asJava) &&
+                req.getTags.contains(autoTag))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
 
@@ -468,7 +523,7 @@ object CreateStackExecutorTests extends TestSuite {
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           getSSMParam = getSSM
-        )(testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackConfigError("Unable to retrieve parameter from SSM: /bad/path/to/secret")))
       }
@@ -486,7 +541,8 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.equals(parameters.asJava) &&
-                req.getTags.equals(tags.asJava))
+                req.getTags.containsAll(tags.asJava) &&
+                req.getTags.contains(autoTag))
               new CreateChangeSetResult().withId("this-change-set-id")
             else throw new Exception("Received unexpected params")
 
@@ -501,7 +557,7 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE)
-        )(testSystem, false, None, None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, None, None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -521,7 +577,7 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE)
-        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
       }
@@ -541,7 +597,7 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE)
-        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("delete go boom")))
       }
@@ -561,7 +617,7 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Bad(StackError("boom"))
-        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
       }
@@ -581,7 +637,7 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE)
-        )(testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError(
           "Failed to create change set and execute it for: stacks/my-account-name.123456789/my/stack/path.yaml. Reason: boom (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
