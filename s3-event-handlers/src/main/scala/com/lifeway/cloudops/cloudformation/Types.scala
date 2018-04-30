@@ -13,6 +13,9 @@ object Types {
   type ChangeSetNamePrefix        = Option[String]
   type CFServiceRoleName          = Option[String]
   type ExternalNotifySNSArn       = Option[String]
+  type TrackingTagName            = String
+  type TrackingTagValuePrefix     = Option[String]
+
 }
 
 /**

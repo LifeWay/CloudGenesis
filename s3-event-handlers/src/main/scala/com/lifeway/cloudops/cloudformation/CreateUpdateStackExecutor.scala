@@ -21,7 +21,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 import akka.pattern.after
-import com.lifeway.cloudops.cloudformation.Types.{CFServiceRoleName, ChangeSetNamePrefix, IAMCapabilityEnabled, SNSArn}
+import com.lifeway.cloudops.cloudformation.Types._
 import org.scalactic.{Bad, Good, Or}
 import org.slf4j.LoggerFactory
 
@@ -41,10 +41,16 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
                                                 iam: IAMCapabilityEnabled,
                                                 cfServiceRoleName: CFServiceRoleName,
                                                 changeSetNamePrefix: ChangeSetNamePrefix,
+                                                trackingTagName: TrackingTagName,
+                                                trackingTagValuePrefix: TrackingTagValuePrefix,
                                                 val snsARN: SNSArn)
     extends StackExecutor {
+
+  val trackingTagBuilder = CreateUpdateStackExecutor.trackingTagBuilder(trackingTagName, trackingTagValuePrefix) _
+
   override val execute: (AmazonCloudFormation, StackConfig, S3File) => Unit Or AutomationError = {
-    CreateUpdateStackExecutor.execute()(actorSystem, iam, cfServiceRoleName, changeSetNamePrefix, snsARN)
+    CreateUpdateStackExecutor
+      .execute()(trackingTagBuilder, actorSystem, iam, cfServiceRoleName, changeSetNamePrefix, snsARN)
   }
 }
 // $COVERAGE-ON$
@@ -62,6 +68,7 @@ object CreateUpdateStackExecutor {
       changeSetNameBuild: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
       changeSetType: (AmazonCloudFormation, StackConfig) => ChangeSetType Or AutomationError = determineChangeSetType,
       getSSMParam: String => Or[String, SSMError] = DefaultSSMUtil.getSSMParam)(
+      trackingTag: (S3File) => AWSTag,
       actorSystem: ActorSystem,
       iam: IAMCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
@@ -69,7 +76,9 @@ object CreateUpdateStackExecutor {
       snsARN: SNSArn)(cfClient: AmazonCloudFormation, config: StackConfig, s3File: S3File): Unit Or AutomationError = {
 
     val tags: Seq[AWSTag] =
-      config.tags.map(_.map(x => new AWSTag().withKey(x.key).withValue(x.value))).getOrElse(Seq.empty)
+      config.tags.map(_.map(x => new AWSTag().withKey(x.key).withValue(x.value))).getOrElse(Seq.empty) :+
+        trackingTag(s3File)
+
     val parameters: Seq[AWSParam] =
       config.parameters
         .map(_.map { param =>
@@ -126,6 +135,13 @@ object CreateUpdateStackExecutor {
 
   def capabilitiesBuilder(iam: IAMCapabilityEnabled): Seq[Capability] =
     if (iam) Seq(Capability.CAPABILITY_NAMED_IAM, Capability.CAPABILITY_IAM) else Seq.empty[Capability]
+
+  def trackingTagBuilder(trackingTagName: TrackingTagName, trackingTagValuePrefix: TrackingTagValuePrefix)(
+      s3File: S3File): AWSTag = {
+    val tagPrefix = trackingTagValuePrefix.getOrElse("")
+    val tagValue  = s"$tagPrefix${s3File.key}".take(255)
+    new AWSTag().withKey(trackingTagName).withValue(tagValue)
+  }
 
   def determineChangeSetType(cfClient: AmazonCloudFormation, config: StackConfig): ChangeSetType Or AutomationError =
     try {
