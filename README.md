@@ -22,7 +22,25 @@ GitDeploy Supports:
 
 
 ## STEPS TO DEPLOY:
-1.  Deploy a StackSet for the master / admin GitDeploy stack. Use the `cf-role-master.stackset.yaml` template on your master / governance account. You can do this all in one account, but best practice would be to isolate it and ensure strong governance around the controller account.
+
+**One Time Only**
+
+1.  On the master / governance account, deploy a new stack for the `template-ecr-buildimage.yaml` template.
+
+2.  Build the Docker Image and push it to the ECR repo created by the `template-ecr-buildimage.yaml` stack.
+    e.g: `docker build -t git-deploy -f Dockerfile-BuildImage .` followed by the instructions provided on ECR on how to do an ECR login and push an image.
+
+3.  Run the `make.sh` script.
+
+    In order to run the make script, you will need a few things installed: sbt, python 3, and yarn. (This SAM stack is polyglot in terms of the Lambdas).
+
+4.  Package the stack via the aws cli. `aws cloudformation package --template template.yaml  --output-template-file packaged.yaml --s3-prefix cf-deployer --s3-bucket CHANGEME`
+
+**Repeat for each deployer you create**
+
+NOTE - you can skip Step 5 if launching this more than once and have a "master" Deployer deploy the roles for "secondary" deployers rather than using a Stack Set:
+ 
+5.  Deploy a StackSet for the master / admin GitDeploy stack. Use the `cf-role-master.stackset.yaml` template on your master / governance account. You can do this all in one account, but best practice would be to isolate it and ensure strong governance around the controller account.
 
     StackSet:
     * `Name`: Pick a name that makes sense to you.
@@ -36,14 +54,10 @@ GitDeploy Supports:
     * `DeployerAccountId`: This is the AccountID that the deployer is running in. This is typically your master or governance account.
     * `AutomationStackName`: This is the stack name you will give to the deployer SAM stack when you launch it. This is necessary as part of a semantic naming scheme so that the `CFAccessRole` created in each account is able to get access to the S3 bucket created by the deployer stack. A classic CloudFormation chicken-and-egg problem where the actual `ARN` doesn't exist yet, so a semantic naming scheme must be used so that the IAM access can be setup ahead of the resource being created.
 
-2.  Run the `make.sh` script.
+6.  Deploy the packaged template either via the CLI or via the AWS Console.
 
-    In order to run the make script, you will need a few things installed: sbt, python 3, and yarn. (This SAM stack is polyglot in terms of the Lambdas).
-
-3. Package the stack via the aws cli. `aws cloudformation package --template template.yaml  --output-template-file packaged.yaml --s3-prefix cf-deployer --s3-bucket CHANGEME`
-
-4. Deploy the packaged template either via the CLI or via the AWS Console.
-
+    ### Console Instructions & Parameter Details
+     
     Main Configuration:
     * `AccountIds` - A comma delimited list of account Id's you want to the deployer to be able to deploy to. **NOTE** this only gives the role assumed by the deployer acesss to do this, however, it will only work if you've first given cross account access to the account the deployer is running in on those account id's. This is handled in Step 1 with the master stackset.
     * `AllowIAMCapabilities` - Enables the passing of the IAM capabilities set to CloudFormation. If this is false, IAM resources cannot be created even if the deployer has full admin access to create any kind of resource. 
@@ -69,6 +83,23 @@ GitDeploy Supports:
     * `ExternalNotificationSNSArn` - OPTIONAL: If provided, this is an ARN to an SNS topic where the deployer will publish events to for when it operates on a stack (create / update or delete). This notification event is useful for audit logging and tracking changes.
     * `TrackingTagPrefix` - OPTIONAL: If provided, this value will be prepended to the front of the tracking tag value. The value of the tag is the path to the stack file. You can optionally add a tag value prefix if you have multiple git deployer's running with different permission sets / different accounts so you know where a given stack came from.
  
+   ### CLI Instructions
+   1. Update the `cli-launch-skeleton.json` file filling it out with the params for your deployment. See details for each parameter above ^^
+   2. If CREATING new stack:
+      ```
+      aws cloudformation create-change-set --template-body file://packaged.yaml --change-set-type CREATE --cli-input-json file://cli-launch-skeleton.json
+      ```
+      
+      If UPDATING existing stack:
+      ```
+      aws cloudformation create-change-set --template-body file://packaged.yaml --change-set-type UPDATE --cli-input-json file://cli-launch-skeleton.json
+      ```
+   3. Using the Id property returned from create change set (the ARN of the change set) run the following command using that ARN as the `change-set-name` param:
+      ```
+      aws cloudformation execute-change-set --change-set-name REPLACE_ME_WITH_ARN
+      ```
+   
+    
  
  # Access to GitHub
  
