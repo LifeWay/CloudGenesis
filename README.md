@@ -83,21 +83,21 @@ NOTE - you can skip Step 5 if launching this more than once and have a "master" 
     * `ExternalNotificationSNSArn` - OPTIONAL: If provided, this is an ARN to an SNS topic where the deployer will publish events to for when it operates on a stack (create / update or delete). This notification event is useful for audit logging and tracking changes.
     * `TrackingTagPrefix` - OPTIONAL: If provided, this value will be prepended to the front of the tracking tag value. The value of the tag is the path to the stack file. You can optionally add a tag value prefix if you have multiple git deployer's running with different permission sets / different accounts so you know where a given stack came from.
  
-   ### CLI Instructions
-   1. Update the `cli-launch-skeleton.json` file filling it out with the params for your deployment. See details for each parameter above ^^
-   2. If CREATING new stack:
-      ```
-      aws cloudformation create-change-set --template-body file://packaged.yaml --change-set-type CREATE --cli-input-json file://cli-launch-skeleton.json
-      ```
+    ### CLI Instructions
+    1. Update the `cli-launch-skeleton.json` file filling it out with the params for your deployment. See details for each parameter above ^^
+    2. If CREATING new stack:
+       ```
+       aws cloudformation create-change-set --template-body file://packaged.yaml --change-set-type CREATE --cli-input-json file://cli-launch-skeleton.json
+       ```
       
-      If UPDATING existing stack:
-      ```
-      aws cloudformation create-change-set --template-body file://packaged.yaml --change-set-type UPDATE --cli-input-json file://cli-launch-skeleton.json
-      ```
-   3. Using the Id property returned from create change set (the ARN of the change set) run the following command using that ARN as the `change-set-name` param:
-      ```
-      aws cloudformation execute-change-set --change-set-name REPLACE_ME_WITH_ARN
-      ```
+       If UPDATING existing stack:
+       ```
+       aws cloudformation create-change-set --template-body file://packaged.yaml --change-set-type UPDATE --cli-input-json file://cli-launch-skeleton.json
+       ```
+    3. Using the Id property returned from create change set (the ARN of the change set) run the following command using that ARN as the `change-set-name` param:
+       ```
+       aws cloudformation execute-change-set --change-set-name REPLACE_ME_WITH_ARN
+       ```
    
     
  
