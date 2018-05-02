@@ -17,7 +17,7 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Parameters:
-  CFAccessRoleName:
+  CFDeployerRoleName:
     Description: "The name of the IAM Role that will be created in each of the accounts. This name is provided to the deployer stack under the same parameter name"
     Type: String
 
@@ -45,9 +45,9 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: "/"
-      RoleName: !Ref CFAccessRoleName
+      RoleName: !Ref CFDeployerRoleName
       Policies:
-        - PolicyName: "CFAccess"
+        - PolicyName: "CFDeployer"
           PolicyDocument:
             Statement:
               - Effect: Allow
