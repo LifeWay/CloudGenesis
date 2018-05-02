@@ -101,11 +101,11 @@ NOTE - you can skip Step 5 if launching this more than once and have a "master" 
    
     
  
- # Access to GitHub
- 
- As the deployer currently only works with GitHub.com you will need to walk thru a few steps to give the deployer access to GitHub.
-  1.) - Generate a GitHub Personal Access Token from a GitHub.com user where that user has READ access to the repo the deployer is tracking. This access token is used by CodePipeline to gain access to GitHub
-  2.) - For PR building, CodeBuild uses GitHub's OAuth based login. The side effect of this is that you must have initiated an OAuth login with Github from CodeBuild using the Console one time, again from a GitHub user that has access. This can be a bit of a hassle to setup since it cannot be scripted via CloudFormation. 
+# Access to GitHub
+As the deployer currently only works with GitHub.com you will need to walk thru a few steps to give the deployer access to GitHub.
+
+1.  Generate a GitHub Personal Access Token from a GitHub.com user where that user has READ access to the repo the deployer is tracking. This access token is used by CodePipeline to gain access to GitHub
+2.  For PR building, CodeBuild uses GitHub's OAuth based login. The side effect of this is that you must have initiated an OAuth login with Github from CodeBuild using the Console one time, again from a GitHub user that has access. This can be a bit of a hassle to setup since it cannot be scripted via CloudFormation. 
     * See these links for instructions from AWS on how to link: https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-pull-request.html and https://docs.aws.amazon.com/codebuild/latest/APIReference/API_ProjectSource.html
 
  
