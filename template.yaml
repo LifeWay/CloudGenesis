@@ -14,7 +14,7 @@ Metadata:
         Parameters:
           - AccountIds
           - AllowIAMCapabilities
-          - CFAccessRoleName
+          - CFDeployerRoleName
           - CFServiceRoleName
           - SSMPath
           - SemanticStackNaming
@@ -73,11 +73,11 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
-  CFAccessRoleName:
+  CFDeployerRoleName:
     Description: "The name of the role in each account that the deployer assumes for access to CloudFormation"
     Type: String
   CFServiceRoleName:
-    Description: "(Optional): The name of the CloudFormation service role in each account that is used by CF for managing the resources. Leave EMPTY if wish to use the CFAccessRoleName's role to also manage the resources (no service role). This role must be passable by the CFAccessRoleName and assumable by CloudFormation"
+    Description: "(Optional): The name of the CloudFormation service role in each account that is used by CF for managing the resources. Leave EMPTY if wish to use the CFDeployerRoleName's role to also manage the resources (no service role). This role must be passable by the CFDeployerRoleName and assumable by CloudFormation"
     Type: String
     Default: ""
   StackChangeSetPrefix:
@@ -342,7 +342,7 @@ Resources:
                 Action:
                   - sts:AssumeRole
                 Resource:
-                  - !Sub "arn:aws:iam::*:role/${CFAccessRoleName}"
+                  - !Sub "arn:aws:iam::*:role/${CFDeployerRoleName}"
         - PolicyName: "snsDLQ"
           PolicyDocument:
             Statement:
@@ -379,7 +379,6 @@ Resources:
       MemorySize: 1536
       Timeout: 300
       Tracing:  Active
-      AutoPublishAlias: "live"
       DeadLetterQueue:
         Type: SNS
         TargetArn: !Ref ErrorsTopic
@@ -388,7 +387,7 @@ Resources:
           CF_EVENTS_TOPIC_ARN: !Ref CloudFormationEventsTopic
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
-          IAM_ASSUME_ROLE_NAME: !Ref CFAccessRoleName
+          IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName
           IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
           CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
@@ -409,7 +408,6 @@ Resources:
       MemorySize: 1536
       Timeout: 300
       Tracing:  Active
-      AutoPublishAlias: "live"
       DeadLetterQueue:
         Type: SNS
         TargetArn: !Ref ErrorsTopic
@@ -418,7 +416,7 @@ Resources:
           CF_EVENTS_TOPIC_ARN: !Ref CloudFormationEventsTopic
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
-          IAM_ASSUME_ROLE_NAME: !Ref CFAccessRoleName
+          IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName
           IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
           CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
@@ -474,7 +472,6 @@ Resources:
       CodeUri: ./cf-notify/cf-notify.zip
       Runtime: python2.7
       Timeout: 300
-      AutoPublishAlias: "live"
       DeadLetterQueue:
         Type: SNS
         TargetArn: !Ref SlackNotificationErrorsTopic
@@ -502,7 +499,6 @@ Resources:
       CodeUri: ./sns-notify/sns-error.zip
       Runtime: python2.7
       Timeout: 300
-      AutoPublishAlias: "live"
       Environment:
         Variables:
           WEBHOOK: !Ref SlackWebHookUrl
@@ -530,7 +526,6 @@ Resources:
       CodeUri: ./codebuild-notify/
       Runtime: nodejs6.10
       Timeout: 300
-      AutoPublishAlias: "live"
       Environment:
         Variables:
           WEBHOOK: !Ref SlackWebHookUrl
