@@ -1,23 +1,23 @@
 
-# CloudFormation-GitDeploy
-GitDeploy creates, updates, and deletes CloudFormation stacks as they exist in Git and tracks all notifications and status updates on Slack
+# CloudFormation-GitOps-Deployer
+CF GitOps creates, updates, and deletes CloudFormation stacks as they exist in Git and tracks all notifications and status updates on Slack
 
-GitDeploy operates as a Serverless Application launched via a single SAM stack (Some Roles necessary to launch before launching stack).
+CF GitOps operates as a Serverless Application launched via a single SAM stack (Some Roles necessary to launch before launching stack).
 
-GitDeploy Supports:
+CF GitOps Supports:
 * GitHub Repositories (Both Public and Private)
 * Deploying stacks to multiple accounts from a single Git Repo.
 * Clean separation from Templates and Stacks - allows Templates to be re-used, even across accounts.
 * All Notifications, errors, and status updates piped to a named Slack channel.
 * Support for Secret stack parameters via SSM.
-  * GitDeploy will have read access to the value in SSM, and then passes that value to CloudFormation as a parameter - you should only use this when your Template takes the parameter as a `NoEcho` type.
+  * CF GitOps will have read access to the value in SSM, and then passes that value to CloudFormation as a parameter - you should only use this when your Template takes the parameter as a `NoEcho` type.
 * External SNS Notification Hook (Optional)
-  * Allows for external systems (e.g. Change Mgmt & Audit) to track events that GitDeploy has initiated. 
+  * Allows for external systems (e.g. Change Mgmt & Audit) to track events that CF GitOps has initiated. 
 * Flexible Security Model.
-  * GitDeploy creates only very minimal IAM permissions for itself. For executions against CloudFormation - it assumes a role that you define.
-  * GitDeploy can work with a single Assumed Role that has access to CloudFormation and can manage certain resource types OR it can work with an Assumed Role that can only work with CloudFormation and where that Role can pass a Service Role to CloudFormation that only CloudFormation can assume. The choice is up to you!
+  * CF GitOps creates only very minimal IAM permissions for itself. For executions against CloudFormation - it assumes a role that you define.
+  * CF GitOps can work with a single Assumed Role that has access to CloudFormation and can manage certain resource types OR it can work with an Assumed Role that can only work with CloudFormation and where that Role can pass a Service Role to CloudFormation that only CloudFormation can assume. The choice is up to you!
 * Custom Tracking Tag
-  * All Stacks are automatically tagged with a GitDeploy tracking Tag (`GitDeploy:stack-file`). The value of the tag is the path to the stack file. You can optionally add a tag value prefix if you have multiple git deployer's running with different permission sets / different accounts so you know where a given stack came from.
+  * All Stacks are automatically tagged with a CF GitOps tracking Tag (`CFGitOps:stack-file`). The value of the tag is the path to the stack file. You can optionally add a tag value prefix if you have multiple git deployer's running with different permission sets / different accounts so you know where a given stack came from.
  
 
 
@@ -40,7 +40,7 @@ GitDeploy Supports:
 
 NOTE - you can skip Step 5 if launching this more than once and have a "master" Deployer deploy the roles for "secondary" deployers rather than using a Stack Set:
  
-5.  Deploy a StackSet for the master / admin GitDeploy stack. Use the `cf-role-master.stackset.yaml` template on your master / governance account. You can do this all in one account, but best practice would be to isolate it and ensure strong governance around the controller account.
+5.  Deploy a StackSet for the master / admin CF GitOps stack. Use the `cf-role-master.stackset.yaml` template on your master / governance account. You can do this all in one account, but best practice would be to isolate it and ensure strong governance around the controller account.
 
     StackSet:
     * `Name`: Pick a name that makes sense to you.
@@ -79,7 +79,7 @@ NOTE - you can skip Step 5 if launching this more than once and have a "master" 
     * `EmailContact` - If Slack is down or messages fail to post to slack, this is the email address that will receive all of the events. **NOTE** An SNS subscription email will be sent upon stack launch, you MUST click the link in the email to subscribe to the data feed, else the messages won't be delievered.
     
     Optional Configuration:
-    * `StackChangeSetPrefix` - OPTIONAL: the naming prefix of the stackset created by GitDeploy. This is useful if you desire to tightly restrict the deployer to only be able to manage stack sets created by that specific deployer instance.
+    * `StackChangeSetPrefix` - OPTIONAL: the naming prefix of the stackset created by CF GitOps. This is useful if you desire to tightly restrict the deployer to only be able to manage stack sets created by that specific deployer instance.
     * `ExternalNotificationSNSArn` - OPTIONAL: If provided, this is an ARN to an SNS topic where the deployer will publish events to for when it operates on a stack (create / update or delete). This notification event is useful for audit logging and tracking changes.
     * `TrackingTagPrefix` - OPTIONAL: If provided, this value will be prepended to the front of the tracking tag value. The value of the tag is the path to the stack file. You can optionally add a tag value prefix if you have multiple git deployer's running with different permission sets / different accounts so you know where a given stack came from.
  

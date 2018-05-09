@@ -1,6 +1,7 @@
 package com.lifeway.cloudops.cloudformation
 
 import akka.actor.ActorSystem
+import com.amazonaws.AmazonServiceException
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.model.{
   AmazonCloudFormationException,
@@ -24,7 +25,7 @@ import com.amazonaws.services.cloudformation.model.{
   Tag => AWSTag
 }
 import com.lifeway.cloudops.cloudformation.Types.TrackingTagValuePrefix
-import org.scalactic.{Bad, Good}
+import org.scalactic.{Bad, Good, Or}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
@@ -99,6 +100,23 @@ object CreateStackExecutorTests extends TestSuite {
             "Failed to create change set for demo-stack due to unhandled change set status: FAILED. Reason: null")))
       }
 
+      'returnBadWhenAWSIsDown - {
+
+        val cfClient = new CloudFormationTestClient {
+          var calls = 0
+          override def describeChangeSet(req: DescribeChangeSetRequest): DescribeChangeSetResult = {
+            val ex = new AmazonServiceException("boom")
+            ex.setStatusCode(500)
+            throw ex
+          }
+        }
+
+        val result =
+          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem)("cf-automation-set-arn", "demo-stack")
+        assert(result == Bad(
+          ServiceError("AWS 500 Service Exception: Change Set failed to reach CREATE_COMPLETE status for: demo-stack")))
+      }
+
       'returnGoodAfterWaitingCycles - {
         val cfClient = cfClientWithStatus(
           Seq(ChangeSetStatus.CREATE_PENDING,
@@ -137,7 +155,7 @@ object CreateStackExecutorTests extends TestSuite {
           CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem, maxRetries = 1, retrySpeed = 1.milli)(
             "cf-automation-set-arn",
             "demo-stack")
-        assert(result == Bad(StackError("Failed to create change set for demo-stack")))
+        assert(result == Bad(StackError("Change Set failed to reach CREATE_COMPLETE status for: demo-stack")))
       }
 
       'returnBadIfMaxWaitExpires - {
@@ -190,6 +208,19 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.determineChangeSetType(cfClient, stackConfig)
         assert(result == Good(ChangeSetType.UPDATE))
+      }
+
+      'returnServiceErrorForAWSDown - {
+        val cfClient = new CloudFormationTestClient {
+          override def describeStacks(describeStacksRequest: DescribeStacksRequest): DescribeStacksResult = {
+            val ex = new AmazonServiceException("boom")
+            ex.setStatusCode(500)
+            throw ex
+          }
+        }
+
+        val result = CreateUpdateStackExecutor.determineChangeSetType(cfClient, stackConfig)
+        assert(result == Bad(ServiceError("AWS 500 Service Exception: Failed to determine stack change set type")))
       }
 
       'returnFailureForOtherErrorsFromAWS - {
@@ -293,10 +324,10 @@ object CreateStackExecutorTests extends TestSuite {
       'returnGoodOnChangeSetTypeUpdateWhenChangeSetNameExistsAndDeletesSuccessfully - {
         val cfClient = new CloudFormationTestClient {
           override def describeChangeSet(describeChangeSetRequest: DescribeChangeSetRequest): DescribeChangeSetResult =
-            new DescribeChangeSetResult().withStackId("some-stack-id")
+            new DescribeChangeSetResult().withChangeSetId("change-set-id")
 
           override def deleteChangeSet(deleteChangeSetRequest: DeleteChangeSetRequest): DeleteChangeSetResult =
-            if (deleteChangeSetRequest.getChangeSetName == "some-stack-id") new DeleteChangeSetResult
+            if (deleteChangeSetRequest.getChangeSetName == "change-set-id") new DeleteChangeSetResult
             else throw new IllegalArgumentException
         }
 
@@ -324,6 +355,79 @@ object CreateStackExecutorTests extends TestSuite {
 
         assert(res == Bad(StackError("Failed to delete existing change set. Error Details: boom")))
       }
+
+      'returnServiceErrorIfAWSDown - {
+        val cfClient = new CloudFormationTestClient {
+          override def describeChangeSet(describeChangeSetRequest: DescribeChangeSetRequest): DescribeChangeSetResult =
+            new DescribeChangeSetResult().withStackId("some-stack-id")
+
+          override def deleteChangeSet(deleteChangeSetRequest: DeleteChangeSetRequest): DeleteChangeSetResult = {
+            val ex = new AmazonServiceException("boom")
+            ex.setStatusCode(500)
+            throw ex
+          }
+        }
+
+        val res =
+          CreateUpdateStackExecutor.deleteExistingChangeSetByNameIfExists(cfClient)(ChangeSetType.UPDATE,
+                                                                                    "stack-name",
+                                                                                    "change-set-name")
+
+        assert(res == Bad(ServiceError("AWS 500 Service Exception: Failed to delete existing change set.")))
+      }
+    }
+
+    'buildParams - {
+      'returnStaticParamsWithoutParamTypes - {
+        val result = CreateUpdateStackExecutor.buildParameters(s => Good(s"ssm: $s"))(stackConfig)
+        val expectedAwsParams: Seq[AWSParam] =
+          stackConfig.parameters
+            .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
+            .getOrElse(Seq.empty)
+
+        assert(result == Good(expectedAwsParams))
+      }
+
+      'returnStaticParamsWithUnMatchedParamType - {
+        val testParams = Some(
+          Seq(Parameter("myParam", "myValue", Some("MadeUpType")),
+              Parameter("myBoolParam", "true", Some("MadeUpType"))))
+        val testConfig = stackConfig.copy(parameters = testParams)
+
+        val result = CreateUpdateStackExecutor.buildParameters(s => Good(s"ssm: $s"))(testConfig)
+        val expectedAwsParams: Seq[AWSParam] =
+          testConfig.parameters
+            .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
+            .getOrElse(Seq.empty)
+
+        assert(result == Good(expectedAwsParams))
+      }
+
+      'returnSSMParamWhenSSMMatchedParamType - {
+        val testParams =
+          Some(Seq(Parameter("mySSMParam", "ssmParamKey", Some("SSM")), Parameter("myBoolParam", "true")))
+        val testConfig = stackConfig.copy(parameters = testParams)
+
+        val result = CreateUpdateStackExecutor.buildParameters(s => Good(s"ssm: $s"))(testConfig)
+        val expectedAwsParams: Seq[AWSParam] = Seq(
+          new AWSParam().withParameterKey("myBoolParam").withParameterValue("true"),
+          new AWSParam().withParameterKey("mySSMParam").withParameterValue("ssm: ssmParamKey")
+        )
+
+        assert(result.isGood)
+        assert(result.get.toSet == expectedAwsParams.toSet)
+      }
+
+      'returnStackConfigErrorWhenUnableToFetchSSMParam - {
+        val testParams =
+          Some(Seq(Parameter("mySSMParam", "ssmParamKey", Some("SSM")), Parameter("myBoolParam", "true")))
+        val testConfig = stackConfig.copy(parameters = testParams)
+
+        val result = CreateUpdateStackExecutor.buildParameters(s => Bad(SSMDefaultError("ssm: boom")))(testConfig)
+
+        assert(result == Bad(
+          StackConfigError("StackConfigError: Unable to retrieve parameter from SSM: ssmParamKey. Reason: ssm: boom")))
+      }
     }
 
     'execute - {
@@ -338,59 +442,6 @@ object CreateStackExecutorTests extends TestSuite {
 
       'returnGoodWhenSuccessfulWithServiceRole - {
         val cfClient = new CloudFormationTestClient {
-          override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult = {
-            println(req.getTags)
-            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
-                req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
-                req.getChangeSetName.equals(s"my-change-set-name") &&
-                req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
-                req.getTemplateURL.equals(
-                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
-                req.getStackName.equals(stackConfig.stackName) &&
-                req.getParameters.equals(parameters.asJava) &&
-                req.getTags.containsAll(tags.asJava) &&
-                req.getTags.contains(autoTag))
-              new CreateChangeSetResult().withId("this-change-set-id")
-            else throw new Exception("Received unexpected params")
-          }
-
-          override def executeChangeSet(req: ExecuteChangeSetRequest): ExecuteChangeSetResult =
-            if (req.getChangeSetName.equals("this-change-set-id")) new ExecuteChangeSetResult()
-            else throw new Exception("Received unexpected params")
-        }
-
-        val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
-          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
-          changeSetNameBuild = _ => "my-change-set-name",
-          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
-        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
-
-        assert(result.isGood)
-      }
-
-      'returnGoodWhenSuccessfulWithServiceRoleAndSSMParam - {
-        val stackConfig = StackConfig(
-          "demo-stack",
-          "demo/template.yaml",
-          Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
-          Some(
-            Seq(Parameter("myParam", "myValue"),
-                Parameter("myBoolParam", "true"),
-                Parameter("myTestSSM", "/path/to/secret", Some("SSM"))))
-        )
-        val parameters: Seq[AWSParam] =
-          stackConfig.parameters
-            .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
-            .getOrElse(Seq.empty)
-        def getSSM(key: String) = {
-          assert(key == "/path/to/secret")
-          Good("this_is_a_secret")
-        }
-        val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
@@ -401,7 +452,7 @@ object CreateStackExecutorTests extends TestSuite {
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
-                req.getParameters.size.equals(parameters.size) &&
+                req.getParameters.equals(parameters.asJava) &&
                 req.getTags.containsAll(tags.asJava) &&
                 req.getTags.contains(autoTag))
               new CreateChangeSetResult().withId("this-change-set-id")
@@ -418,7 +469,7 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          getSSMParam = getSSM
+          buildParams = (_) => Good(parameters)
         )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
@@ -438,10 +489,7 @@ object CreateStackExecutorTests extends TestSuite {
           stackConfig.parameters
             .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
             .getOrElse(Seq.empty)
-        def getSSM(key: String) = {
-          assert(key == "/path/to/secret")
-          Good("this_is_a_secret")
-        }
+
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
@@ -470,62 +518,10 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          getSSMParam = getSSM
+          buildParams = (_) => Good(parameters)
         )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
-      }
-
-      'returnBadWhenSSMFails - {
-        val stackConfig = StackConfig(
-          "demo-stack",
-          "demo/template.yaml",
-          Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
-          Some(
-            Seq(Parameter("myParam", "myValue"),
-                Parameter("myBoolParam", "true"),
-                Parameter("myTestSSM", "/bad/path/to/secret", Some("SSM"))))
-        )
-        val parameters: Seq[AWSParam] =
-          stackConfig.parameters
-            .map(_.map(x => new AWSParam().withParameterKey(x.name).withParameterValue(x.value)))
-            .getOrElse(Seq.empty)
-        def getSSM(key: String) = {
-          assert(key == "/bad/path/to/secret")
-          Bad(SSMDefaultError("Error"))
-        }
-        val cfClient = new CloudFormationTestClient {
-          override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
-            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
-                req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
-                req.getChangeSetName.equals(s"my-change-set-name") &&
-                req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
-                req.getTemplateURL.equals(
-                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
-                req.getStackName.equals(stackConfig.stackName) &&
-                req.getParameters.size.equals(parameters.size) &&
-                req.getTags.containsAll(tags.asJava) &&
-                req.getTags.contains(autoTag))
-              new CreateChangeSetResult().withId("this-change-set-id")
-            else throw new Exception("Received unexpected params")
-
-          override def executeChangeSet(req: ExecuteChangeSetRequest): ExecuteChangeSetResult =
-            if (req.getChangeSetName.equals("this-change-set-id")) new ExecuteChangeSetResult()
-            else throw new Exception("Received unexpected params")
-        }
-
-        val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
-          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
-          changeSetNameBuild = _ => "my-change-set-name",
-          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          getSSMParam = getSSM
-        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
-
-        assert(result == Bad(StackConfigError("Unable to retrieve parameter from SSM: /bad/path/to/secret")))
       }
 
       'returnGoodWhenSuccessfulWithoutServiceRole - {
@@ -556,7 +552,8 @@ object CreateStackExecutorTests extends TestSuite {
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
-          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
+          buildParams = (_) => Good(parameters)
         )(_ => autoTag, testSystem, false, None, None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
@@ -576,7 +573,8 @@ object CreateStackExecutorTests extends TestSuite {
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
-          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
+          buildParams = (_) => Good(parameters)
         )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
@@ -596,7 +594,8 @@ object CreateStackExecutorTests extends TestSuite {
           deleteChangeSetIfExists = (_) => (_, _, _) => Bad(StackError("delete go boom")),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
-          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
+          buildParams = (_) => Good(parameters)
         )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("delete go boom")))
@@ -616,7 +615,8 @@ object CreateStackExecutorTests extends TestSuite {
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
-          changeSetType = (_, _) => Bad(StackError("boom"))
+          changeSetType = (_, _) => Bad(StackError("boom")),
+          buildParams = (_) => Good(parameters)
         )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
@@ -636,11 +636,59 @@ object CreateStackExecutorTests extends TestSuite {
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
-          changeSetType = (_, _) => Good(ChangeSetType.CREATE)
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
+          buildParams = (_) => Good(parameters)
         )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError(
           "Failed to create change set and execute it for: stacks/my-account-name.123456789/my/stack/path.yaml. Reason: boom (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
+
+      }
+
+      'returnBadWhenBuildParamsFails - {
+        val cfClient = new CloudFormationTestClient {
+          override def createChangeSet(createChangeSetRequest: CreateChangeSetRequest): CreateChangeSetResult =
+            new CreateChangeSetResult()
+
+          override def executeChangeSet(executeChangeSetRequest: ExecuteChangeSetRequest): ExecuteChangeSetResult =
+            new ExecuteChangeSetResult()
+        }
+
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
+          capabilities = _ => Seq.empty,
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
+          buildParams = (_) => Bad(StackError("params boom"))
+        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+
+        assert(result == Bad(StackError("params boom")))
+      }
+
+      'returnServiceErrorWhenAWSDown - {
+        val cfClient = new CloudFormationTestClient {
+          override def createChangeSet(createChangeSetRequest: CreateChangeSetRequest): CreateChangeSetResult = {
+            val ex = new AmazonServiceException("boom")
+            ex.setStatusCode(500)
+            throw ex
+          }
+
+          override def executeChangeSet(executeChangeSetRequest: ExecuteChangeSetRequest): ExecuteChangeSetResult =
+            new ExecuteChangeSetResult()
+        }
+
+        val result = CreateUpdateStackExecutor.execute(
+          changeSetReady = (_, _) => (_, _) => Good(()),
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
+          capabilities = _ => Seq.empty,
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
+          buildParams = (_) => Good(parameters)
+        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+
+        assert(result == Bad(ServiceError(
+          "Failed to create change set and execute it for: stacks/my-account-name.123456789/my/stack/path.yaml. Reason: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)")))
 
       }
     }
