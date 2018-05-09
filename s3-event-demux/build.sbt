@@ -1,6 +1,6 @@
 import NativePackagerHelper._
 
-name := "s3-event-handlers"
+name := "s3-event-demux"
 
 version := "1.0"
 
@@ -8,21 +8,24 @@ scalaVersion := "2.12.4"
 
 val awsVersion = "1.11.303"
 
+val circeVersion = "0.9.3"
+
+libraryDependencies ++= Seq(
+  "io.circe" %% "circe-core",
+  "io.circe" %% "circe-parser"
+).map(_ % circeVersion)
+
 libraryDependencies ++= Seq(
   "com.amazonaws"            % "aws-lambda-java-core"        % "1.2.0",
   "com.amazonaws"            % "aws-lambda-java-events"      % "2.1.0",
   "com.amazonaws"            % "aws-java-sdk-s3"             % awsVersion,
-  "com.amazonaws"            % "aws-java-sdk-cloudformation" % awsVersion,
   "com.amazonaws"            % "aws-java-sdk-sts"            % awsVersion,
   "com.amazonaws"            % "aws-java-sdk-sns"            % awsVersion,
-  "com.amazonaws"            % "aws-java-sdk-ssm"            % awsVersion,
   "com.amazonaws"            % "aws-lambda-java-log4j2"      % "1.1.0",
   "org.apache.logging.log4j" % "log4j-core"                  % "2.8.2",
   "org.apache.logging.log4j" % "log4j-api"                   % "2.8.2",
   "org.apache.logging.log4j" % "log4j-slf4j-impl"            % "2.8.2",
   "org.scalactic"            %% "scalactic"                  % "3.0.5",
-  "com.typesafe.akka"        %% "akka-actor"                 % "2.5.11",
-  "io.circe"                 %% "circe-yaml"                 % "0.6.1",
   "com.lihaoyi"              %% "utest"                      % "0.6.4" % "test"
 )
 
