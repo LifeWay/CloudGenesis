@@ -32,8 +32,9 @@ CF GitOps Supports:
 
 3.  Run the `make.sh` script.
 
-    In order to run the make script, you will need a few things installed: sbt, python 3, and yarn. (This SAM stack is polyglot in terms of the Lambdas).
-
+    In order to run the make script, you will need docker installed.
+      * This is a polyglot SAM app that combines Scala, Node, and Python Lambdas. You can build the app without docker, but it is not recommended unless you are doing development / debugging of the application.
+      
 4.  Package the stack via the aws cli. `aws cloudformation package --template template.yaml  --output-template-file packaged.yaml --s3-prefix cf-deployer --s3-bucket CHANGEME`
 
 **Repeat for each deployer you create**
