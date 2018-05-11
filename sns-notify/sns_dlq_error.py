@@ -53,7 +53,7 @@ def build_custom_error_message_attachment(rec):
     try:
         title = rec['Records'][0]['Sns']['MessageAttributes']['ErrorMessage']['Value']
     except KeyError:
-        return {'title': "Stack ERROR", 'color': 'danger'}
+        return {'title': "Stack Error", 'color': 'danger'}
     
     return {
         'fallback': title,
