@@ -5,7 +5,7 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: "CloudFormation-GitDeploy: Automated CloudFormation Management from Git Source"
+Description: "CloudFormation-GitOps: Automated CloudFormation Management from Git Source"
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -240,7 +240,12 @@ Resources:
           - Arn
         Protocol: lambda
 
-  ErrorsTopic:
+  S3FileEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "CF GitOps: S3 File Events (Demuxed)"
+
+  DLQErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: "CF Automation: Errors"
@@ -248,6 +253,17 @@ Resources:
       - Endpoint:
           Fn::GetAtt:
           - SNSDLQErrorFunction
+          - Arn
+        Protocol: lambda
+
+  ErrorsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "CF Automation: Errors"
+      Subscription:
+      - Endpoint:
+          Fn::GetAtt:
+          - SNSErrorFunction
           - Arn
         Protocol: lambda
 
@@ -301,6 +317,90 @@ Resources:
             Action: sns:Publish
             Resource: !Ref BuildStatusTopic
 
+  #
+  # DEMUXER
+  #
+  LambdaDemuxerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+              - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: "snsDLQAndErrors"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource:
+                  - !Ref DLQErrorsTopic
+                  - !Ref ErrorsTopic
+                  - !Ref S3FileEventsTopic
+        - PolicyName: "xray-put-traces"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+
+  CreateUpdateEventDemuxer:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: java8
+      CodeUri: ./s3-event-demux/target/universal/s3-event-demux-1.0.zip
+      MemorySize: 512
+      Timeout: 300
+      Tracing:  Active
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref DLQErrorsTopic
+      Environment:
+        Variables:
+          S3FILE_EVENTS_TOPIC_ARN: !Ref S3FileEventsTopic
+          SNS_ERROR_TOPIC_ARN: !Ref ErrorsTopic
+      Role: !GetAtt LambdaDemuxerRole.Arn
+      Handler: com.lifeway.cloudops.cloudformation.S3EventDemuxer::createUpdateHandler
+      Events:
+        CreateUpdateS3Event:
+          Type: SNS
+          Properties:
+            Topic: !Ref S3CreateUpdateEventsTopic
+
+  DeleteEventDemuxer:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: java8
+      CodeUri: ./s3-event-demux/target/universal/s3-event-demux-1.0.zip
+      MemorySize: 512
+      Timeout: 300
+      Tracing:  Active
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref DLQErrorsTopic
+      Environment:
+        Variables:
+          S3FILE_EVENTS_TOPIC_ARN: !Ref S3FileEventsTopic
+          SNS_ERROR_TOPIC_ARN: !Ref ErrorsTopic
+      Role: !GetAtt LambdaDemuxerRole.Arn
+      Handler: com.lifeway.cloudops.cloudformation.S3EventDemuxer::deleteHandler
+      Events:
+        CreateUpdateS3Event:
+          Type: SNS
+          Properties:
+            Topic: !Ref S3DeleteEventsTopic
+
+
   LambdaStackMgmtRole:
     Type: AWS::IAM::Role
     Properties:
@@ -343,7 +443,7 @@ Resources:
                   - sts:AssumeRole
                 Resource:
                   - !Sub "arn:aws:iam::*:role/${CFDeployerRoleName}"
-        - PolicyName: "snsDLQ"
+        - PolicyName: "snsDLQAndErrors"
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -371,7 +471,7 @@ Resources:
                       - !Ref ExternalNotificationSNSArn
             - !Ref "AWS::NoValue"
 
-  CreateUpdateStackEventHandler:
+  S3FileEventHandler:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: java8
@@ -381,54 +481,26 @@ Resources:
       Tracing:  Active
       DeadLetterQueue:
         Type: SNS
-        TargetArn: !Ref ErrorsTopic
+        TargetArn: !Ref ErrorsTopic # DLQ should be rarely thrown, msg won't be pretty formatted at this handler, but it will print
       Environment:
         Variables:
           CF_EVENTS_TOPIC_ARN: !Ref CloudFormationEventsTopic
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
           IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName
+          SNS_ERROR_TOPIC_ARN: !Ref ErrorsTopic
           IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
           SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
           CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
           TRACKING_TAG_PREFIX: !If [HasTrackingTagPrefix, !Ref TrackingTagPrefix, !Ref "AWS::NoValue"]
       Role: !GetAtt LambdaStackMgmtRole.Arn
-      Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::createUpdateHandler
+      Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::handler
       Events:
-        CreateUpdateS3Event:
+        DemuxedS3FileEvent:
           Type: SNS
           Properties:
-            Topic: !Ref S3CreateUpdateEventsTopic
+            Topic: !Ref S3FileEventsTopic
 
-  DeleteStackEventHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      Runtime: java8
-      CodeUri: ./s3-event-handlers/target/universal/s3-event-handlers-1.0.zip
-      MemorySize: 1536
-      Timeout: 300
-      Tracing:  Active
-      DeadLetterQueue:
-        Type: SNS
-        TargetArn: !Ref ErrorsTopic
-      Environment:
-        Variables:
-          CF_EVENTS_TOPIC_ARN: !Ref CloudFormationEventsTopic
-          IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
-          SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
-          IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName
-          IAM_CF_SERVICE_ROLE_NAME: !If [HasCFServiceRole, !Ref CFServiceRoleName, !Ref "AWS::NoValue"]
-          SNS_EXTERNAL_TOPIC_NOTIFY_ARN: !If [HasExternalNotificationSNS, !Ref ExternalNotificationSNSArn, !Ref "AWS::NoValue"]
-          CF_CHANGE_SET_NAME_PREFIX: !If [HasStackChageSetPrefix, !Ref StackChangeSetPrefix, !Ref "AWS::NoValue"]
-          TRACKING_TAG_PREFIX: !If [HasTrackingTagPrefix, !Ref TrackingTagPrefix, !Ref "AWS::NoValue"]
-      Role: !GetAtt LambdaStackMgmtRole.Arn
-      Handler: com.lifeway.cloudops.cloudformation.LambdaStackHandler::deleteHandler
-      Events:
-        DeleteS3Event:
-          Type: SNS
-          Properties:
-            Topic: !Ref S3DeleteEventsTopic
-            
   CFNotifyRole:
     Type: AWS::IAM::Role
     Properties:
@@ -494,7 +566,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Lambda function to post SNS DLQ errors to Slack
-      Handler: sns_error.lambda_handler
+      Handler: sns_error.dlq_lambda_handler
       Role: !GetAtt CFNotifyRole.Arn
       CodeUri: ./sns-notify/sns-error.zip
       Runtime: python2.7
@@ -512,6 +584,33 @@ Resources:
     Properties:
       FunctionName:
         Ref: SNSDLQErrorFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn:
+        Ref: DLQErrorsTopic
+
+  SNSErrorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Lambda function to post errors to Slack from SNS topic
+      Handler: sns_error.error_lambda_handler
+      Role: !GetAtt CFNotifyRole.Arn
+      CodeUri: ./sns-notify/sns-error.zip
+      Runtime: python2.7
+      Timeout: 300
+      Environment:
+        Variables:
+          WEBHOOK: !Ref SlackWebHookUrl
+          CHANNEL: !Ref SlackChannel
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref SlackNotificationErrorsTopic
+
+  SNSErrorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: SNSErrorFunction
       Action: lambda:InvokeFunction
       Principal: sns.amazonaws.com
       SourceArn:

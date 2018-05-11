@@ -3,22 +3,19 @@ package com.lifeway.cloudops.cloudformation
 import akka.actor.ActorSystem
 import com.amazonaws.services.lambda.runtime.Context
 import com.amazonaws.services.lambda.runtime.events.SNSEvent
-import com.amazonaws.services.s3.event.S3EventNotification
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.securitytoken.{AWSSecurityTokenService, AWSSecurityTokenServiceClientBuilder}
 import com.amazonaws.services.sns.{AmazonSNS, AmazonSNSClientBuilder}
 import org.scalactic.{Or, _}
-import org.scalactic.Accumulation._
 import com.lifeway.cloudops.cloudformation.Types._
 import org.slf4j.LoggerFactory
+import io.circe.parser._
 
 import scala.collection.JavaConverters._
-import scala.util.Try
 
 /**
-  * Handles the Lambda Invokes from SNS Events.
-  * Two Handlers defined - one for CreateUpdate and one for Delete. Therefore, this same package will be distributed
-  * twice for two different lambdas, each with a different handler.
+  * Handles the Lambda Invokes from SNS Events coming from the S3 Event Demuxer.
+  *
   */
 // $COVERAGE-OFF$
 class LambdaStackHandler {
@@ -31,10 +28,13 @@ class LambdaStackHandler {
   val snsExternalNotifyTopicArn: ExternalNotifySNSArn = sys.env.get("SNS_EXTERNAL_TOPIC_NOTIFY_ARN")
   val cfServiceRoleName: CFServiceRoleName            = sys.env.get("IAM_CF_SERVICE_ROLE_NAME")
   val changeSetNamePrefix: ChangeSetNamePrefix        = sys.env.get("CF_CHANGE_SET_NAME_PREFIX")
-  val trackingTagName: TrackingTagName                = sys.env.getOrElse("TRACKING_TAG_NAME", "GitDeploy:stack-file")
+  val trackingTagName: TrackingTagName                = sys.env.getOrElse("TRACKING_TAG_NAME", "CFGitOps:stack-file")
   val trackingTagValuePrefix: TrackingTagValuePrefix  = sys.env.get("TRACKING_TAG_PREFIX")
   val system                                          = ActorSystem("SchedulerSystem")
-  val eventProcessorOr: EventProcessor Or Every[AutomationError] =
+  val snsErrorArn: SNSErrorArn = sys.env
+    .getOrElse("SNS_ERROR_TOPIC_ARN", throw new Exception("SNS_ERROR_TOPIC_ARN is not set. All processing has failed."))
+
+  val eventProcessorOr: EventProcessor Or AutomationError =
     LambdaStackHandler.loadEventProcessor(varName =>
       sys.env.get(varName).flatMap(x => if (x.isEmpty) None else Some(x)))(
       stsClient,
@@ -49,27 +49,18 @@ class LambdaStackHandler {
       trackingTagValuePrefix,
       snsExternalNotifyTopicArn
     )
-  val handler = LambdaStackHandler.lambdaHandler(eventProcessorOr, LambdaStackHandler.eventHandler) _
+  val handler = LambdaStackHandler.lambdaHandler(
+    eventProcessorOr,
+    LambdaStackHandler.eventHandler,
+    (input: String) => snsClient.publish(snsErrorArn, input, "CF GitOps: Error")) _
 
   /**
-    * Given an SNS Event that should be wrapping an S3 message, process it and then transform the type system back
-    * to Lambda void or basic Exception with a String of error details so it shows up in logs / passed down the DLQ
-    * chain
+    * Given an SNS Event that should be wrapping an S3File type (coming from demuxer), process it.
     *
     * @param event
     * @param ctx
     */
-  def createUpdateHandler(event: SNSEvent, ctx: Context): Unit = handler(CreateUpdateEvent, event)
-
-  /**
-    * Given an SNS Event that should be wrapping an S3 message, process it and then transform the type system back
-    * to Lambda void or basic Exception with a String of error details so it shows up in logs / passed down the DLQ
-    * chain
-    *
-    * @param event
-    * @param ctx
-    */
-  def deleteHandler(event: SNSEvent, ctx: Context): Unit = handler(DeletedEvent, event)
+  def handler(event: SNSEvent, ctx: Context): Unit = handler(event)
 }
 
 // $COVERAGE-ON$
@@ -78,24 +69,42 @@ object LambdaStackHandler {
   val logger = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.LambdaStackHandler")
 
   /**
-    * Handles an SNSEvent based on the EventType and returns a response for AWS Lambda' Async invokes. Needs to return
-    * Units (Java Voids) and throw exceptions for the purposes of AWS JVM Lambda.
+    * Handles an SNSEvent based on the EventType and returns a response for AWS Lambda' Async invokes (Needs to return
+    * Units (Java Voids) and throw exceptions for the purposes of AWS JVM Lambda)
+    *
+    * ~~~WARNING~~~
+    * Careful about throwing any exceptions. If the Exception was an AWS 500 level error, then it can be thrown as DLQ.
+    * However, there is still risk here, assume that a stack got updated twice within a minute (e.g. developer realized
+    * stack commit was wrong and quickly fired another commit that got merged). If the first one fails because AWS was
+    * having a hick-up, and retries after a DLQ timeout, but the second commit went thru fine, only to have the first
+    * overwrite the second after a DLQ delay.
+    *
+    * As a result, for the time being we are not retrying even 500 level AWS errors. The SDK is already going to do this
+    * anyways, so there is already this risk - we just don't want to delay it even further by putting many seconds in
+    * between retries like the DLQ currently does.
+    *
+    * Therefore, it is recommended to capture all exceptions and push them down your own failure handler outside of the
+    * capabilities of DLQ processing.
+    *
+    * Long-term it would be ideal to turn the S3 Notifications from the Demuxer into a kinesis stream such that the next
+    * event is not executed until the preceding one succeeds. This would naturally keep things in order assuming
+    * the Demuxer is able to execute the events in as close to as possible ordering from what SNS events from S3 is
+    * giving us.
     *
     * @param eventProcessorOr
     * @param eventHandlerFun
-    * @param eventType
     * @param event
     */
-  def lambdaHandler(eventProcessorOr: EventProcessor Or Every[AutomationError],
-                    eventHandlerFun: (EventProcessor, EventType, SNSEvent) => Unit Or Every[AutomationError])(
-      eventType: EventType,
-      event: SNSEvent): Unit =
+  def lambdaHandler(eventProcessorOr: EventProcessor Or AutomationError,
+                    eventHandlerFun: (EventProcessor, SNSEvent) => Unit Or AutomationError,
+                    snsErrorMsg: String => Unit,
+  )(event: SNSEvent): Unit =
     (for {
       eventProcessor <- eventProcessorOr
-      eventHandled   <- eventHandlerFun(eventProcessor, eventType, event)
+      eventHandled   <- eventHandlerFun(eventProcessor, event)
     } yield eventHandled).fold(
       good => good,
-      everyBad => throw new Exception(everyBad.mkString("/n"))
+      bad => snsErrorMsg(bad.toString)
     )
 
   /**
@@ -124,7 +133,7 @@ object LambdaStackHandler {
       trackingTagName: TrackingTagName,
       trackingTagValuePrefix: TrackingTagValuePrefix,
       externalSNSArn: ExternalNotifySNSArn
-  ): EventProcessor Or Every[AutomationError] = {
+  ): EventProcessor Or AutomationError = {
     val eventProcessorOpt: Option[EventProcessor] = for {
       assumeRoleName <- envFetch("IAM_ASSUME_ROLE_NAME")
       snsEventsArn   <- envFetch("CF_EVENTS_TOPIC_ARN")
@@ -147,44 +156,36 @@ object LambdaStackHandler {
                                          executors,
                                          assumeRoleName)
     }
-
     Or.from(eventProcessorOpt, "IAM_ASSUME_ROLE_NAME or CF_EVENTS_TOPIC_ARN env variables were not set.")
-      .badMap(e => One(LambdaConfigError(e)))
+      .badMap(e => LambdaConfigError(e))
   }
 
   /**
-    * Responsible for taking the SNSEvent, processing some ENV vars, and the EventType (CreateUpdate or Delete) and
-    * calling the provided eventProcessor function to process the S3Event.
+    * Responsible for taking the SNSEvent and the EventType (CreateUpdate or Delete) and calling the provided
+    * eventProcessor function to process the S3Event.
     *
-    * The primary role of this function is to validate the config and extract from the SNSEvent message the underlying
-    * S3Event objects
+    * A single SNSEvent coming into this lambda should contain a single S3EventNotificationRecord that has already
+    * been demuxed from the original SNS S3 Notifcation topic. This function gaurds against this fact and WILL return
+    * errors and cease processing if the event wasn't properly demuxed and parsable into an S3File.
     *
     * @param eventProcessor
-    * @param eventType
     * @param event
     * @return
     */
-  def eventHandler(eventProcessor: EventProcessor,
-                   eventType: EventType,
-                   event: SNSEvent): Unit Or Every[AutomationError] = {
+  def eventHandler(eventProcessor: EventProcessor, event: SNSEvent): Unit Or AutomationError = {
+    val records = event.getRecords.asScala
+    if (records.size != 1)
+      Bad(
+        StackError("Stack Handler can only receive records that have gone thru the Demuxer that emits a single event"))
+    else {
+      val parsed = Or
+        .from(for {
+          json   <- parse(records.head.getSNS.getMessage)
+          s3File <- json.as[S3File]
+        } yield s3File)
+        .badMap(x => StackError(s"Unable to parse SNS Message into S3File type. Reason: ${x.getMessage}"))
 
-    /**
-      * A single SNSEvent may contain multiple S3Event messages which each can also contain multiple files that were
-      * touched. We need to treat each unit as an individual failure, being careful not to fail everything just because
-      * one part failed. As that would be dangerous in terms of keeping the git repo <--> CloudFormation in-sync with
-      * one another. Each stack must have an equal chance to get executed if they share the same event!
-      */
-    val processedResults: Seq[Unit Or Every[AutomationError] Or One[AutomationError]] = event.getRecords.asScala.map {
-      sns =>
-        val s3Event: S3EventNotification Or One[StackError] =
-          Or.from(Try(S3EventNotification.parseJson(sns.getSNS.getMessage)))
-            .badMap(x => One(StackError(x.getMessage)))
-        val processed: Or[Or[Unit, Every[AutomationError]], One[AutomationError]] =
-          s3Event.map(event => eventProcessor.processEvent(event, eventType))
-        processed
-    }.toSeq
-
-    //Combine the results into a single of success of Unit (for JVM Async Lambda) or a summation of all failures
-    processedResults.combined.flatMap(_.combined.map(_ => ()))
+      parsed.flatMap(s3File => eventProcessor.processEvent(s3File))
+    }
   }
 }
