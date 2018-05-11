@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 (cd s3-event-demux/; sbt universal:packageBin; cd -)
 (cd s3-event-handlers/; sbt universal:packageBin; cd -)
