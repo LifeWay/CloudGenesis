@@ -51,6 +51,11 @@ object TypesTests extends TestSuite {
         val e = LambdaConfigError("my error msg")
         assert(e.toString == "LambdaConfigError: my error msg")
       }
+
+      'ServiceError - {
+        val e = ServiceError("aws error")
+        assert(e.toString == "ServiceError: aws error")
+      }
     }
   }
 }

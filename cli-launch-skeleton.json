@@ -52,5 +52,5 @@
     "CAPABILITY_IAM",
     "CAPABILITY_NAMED_IAM"
   ],
-  "ChangeSetName": "CF-GitDeploy-deployment"
+  "ChangeSetName": "CF-GitOps-deployment"
 }

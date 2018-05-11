@@ -1,5 +1,6 @@
 package com.lifeway.cloudops.cloudformation
 
+import com.amazonaws.AmazonServiceException
 import com.amazonaws.services.cloudformation.model._
 import org.scalactic.{Bad, Good}
 import utest._
@@ -35,6 +36,23 @@ object DeleteStackExecutorTests extends TestSuite {
       val result = DeleteStackExecutor.execute(cfClient, stackConfig, s3File)
       assert(result == Bad(StackError(
         "Failed to delete stack: test-stack.yaml due to: boom (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
+    }
+
+    'badIfAWSIsDown - {
+      val cfClient = new CloudFormationTestClient {
+        override def describeStacks(req: DescribeStacksRequest): DescribeStacksResult =
+          new DescribeStacksResult().withStacks(new Stack().withStackName("test-stack"))
+
+        override def deleteStack(deleteStackRequest: DeleteStackRequest): DeleteStackResult = {
+          val ex = new AmazonServiceException("boom")
+          ex.setStatusCode(500)
+          throw ex
+        }
+      }
+      val result = DeleteStackExecutor.execute(cfClient, stackConfig, s3File)
+
+      assert(result == Bad(ServiceError(
+        "AWS 500 Service Exception: Failed to delete stack: test-stack.yaml due to: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)")))
     }
 
     'badIfNoStackByName - {

@@ -1,7 +1,5 @@
 package com.lifeway.cloudops.cloudformation
 
-import io.circe.{Decoder, Encoder, Json}
-
 /**
   * General Types
   */
@@ -10,6 +8,7 @@ object Types {
   type SemanticStackNamingEnabled = Boolean
   type AssumeRoleName             = String
   type SNSArn                     = String
+  type SNSErrorArn                = String
   type ChangeSetNamePrefix        = Option[String]
   type CFServiceRoleName          = Option[String]
   type ExternalNotifySNSArn       = Option[String]
@@ -35,28 +34,6 @@ case class LambdaConfigError(msg: String) extends AutomationError {
   override def toString: String = s"LambdaConfigError: $msg"
 }
 
-/**
-  * Event Types
-  */
-sealed trait EventType
-case object CreateUpdateEvent extends EventType
-case object DeletedEvent      extends EventType
-
-object EventType {
-  implicit val encoder: Encoder[EventType] = Encoder[EventType] {
-    case CreateUpdateEvent => Json.fromString("CreateUpdateEvent")
-    case DeletedEvent      => Json.fromString("DeletedEvent")
-  }
-  implicit val decoder: Decoder[EventType] = Decoder[EventType] { c =>
-    for {
-      eType <- c.as[String]
-    } yield {
-      eType match {
-        case "CreateUpdateEvent" => CreateUpdateEvent
-        case "DeletedEvent"      => DeletedEvent
-      }
-    }
-  }
+case class ServiceError(msg: String) extends AutomationError {
+  override def toString: String = s"ServiceError: $msg"
 }
-
-case class S3File(bucket: String, key: String, versionId: String, eventType: EventType)

@@ -1,5 +1,6 @@
 package com.lifeway.cloudops.cloudformation
 
+import com.amazonaws.AmazonServiceException
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.model.{DeleteStackRequest, DescribeStacksRequest}
 import org.scalactic.{Bad, Good, Or}
@@ -37,6 +38,9 @@ object DeleteStackExecutor {
             s"Failed to delete stack: ${s3File.key}. No stack by that stack name: ${config.stackName} exists!"))
       }
     } catch {
+      case e: AmazonServiceException if e.getStatusCode >= 500 =>
+        logger.error(s"AWS 500 Service Exception: Failed to delete stack: ${s3File.key}.", e)
+        Bad(ServiceError(s"AWS 500 Service Exception: Failed to delete stack: ${s3File.key} due to: ${e.getMessage}"))
       case e: Throwable =>
         logger.error(s"Failed to delete stack: ${s3File.key}", e)
         Bad(StackError(s"Failed to delete stack: ${s3File.key} due to: ${e.getMessage}"))
