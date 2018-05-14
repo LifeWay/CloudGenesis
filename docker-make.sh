@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-(cd s3-event-demux/; sbt universal:packageBin; cd -)
-(cd s3-event-handlers/; sbt universal:packageBin; cd -)
+(cd s3-event-demux/; sbt cleanFiles clean compile universal:packageBin; cd -)
+(cd s3-event-handlers/; sbt cleanFiles clean compile universal:packageBin; cd -)
 
 (cd cf-notify/; zip cf-notify.zip lambda_notify.py; cd -)
 
