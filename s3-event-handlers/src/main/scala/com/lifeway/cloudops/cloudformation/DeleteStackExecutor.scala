@@ -26,9 +26,9 @@ object DeleteStackExecutor {
 
   def execute(cfClient: AmazonCloudFormation, config: StackConfig, s3File: S3File): Unit Or AutomationError =
     try {
-      val stackReq     = new DescribeStacksRequest().withStackName(config.stackName)
-      val stackMissing = cfClient.describeStacks(stackReq).getStacks.isEmpty
-      if (!stackMissing) {
+      val stackReq   = new DescribeStacksRequest().withStackName(config.stackName)
+      val stackFound = !cfClient.describeStacks(stackReq).getStacks.isEmpty
+      if (stackFound) {
         val req = new DeleteStackRequest().withStackName(config.stackName)
         cfClient.deleteStack(req)
         Good(())

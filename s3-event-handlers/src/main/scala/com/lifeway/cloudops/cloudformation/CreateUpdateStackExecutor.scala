@@ -1,6 +1,6 @@
 package com.lifeway.cloudops.cloudformation
 
-import akka.actor.{ActorSystem, Scheduler}
+import akka.actor.ActorSystem
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.model.{
   AmazonCloudFormationException,
@@ -10,17 +10,15 @@ import com.amazonaws.services.cloudformation.model.{
   ChangeSetType,
   CreateChangeSetRequest,
   DeleteChangeSetRequest,
+  DeleteStackRequest,
   DescribeChangeSetRequest,
   DescribeStacksRequest,
   ExecuteChangeSetRequest,
+  StackStatus,
   Parameter => AWSParam,
   Tag => AWSTag
 }
-
 import scala.collection.JavaConverters._
-import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.concurrent.duration._
-import akka.pattern.after
 import com.amazonaws.AmazonServiceException
 import com.lifeway.cloudops.cloudformation.Types._
 import org.scalactic._
@@ -50,28 +48,50 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
 
   val trackingTagBuilder = CreateUpdateStackExecutor.trackingTagBuilder(trackingTagName, trackingTagValuePrefix) _
 
+  val waitForStatus = CreateUpdateStackExecutor.waitForStatus(actorSystem) _
+  val deleteRollbackStackIfExists =
+    CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(
+      waitForStatus(CreateUpdateStackExecutor.stackStatusFetcher)) _
+
   override val execute: (AmazonCloudFormation, StackConfig, S3File) => Unit Or AutomationError = {
     CreateUpdateStackExecutor
-      .execute()(trackingTagBuilder, actorSystem, iam, cfServiceRoleName, changeSetNamePrefix, snsARN)
+      .execute()(
+        waitForStatus(CreateUpdateStackExecutor.changeSetStatusFetcher),
+        deleteRollbackStackIfExists,
+        trackingTagBuilder,
+        iam,
+        cfServiceRoleName,
+        changeSetNamePrefix,
+        snsARN
+      )
   }
 }
 // $COVERAGE-ON$
 
-object CreateUpdateStackExecutor {
+object CreateUpdateStackExecutor extends StatusCheckerModule {
   val ChangeSetNamePostfix = "cf-deployer-automation"
   val logger               = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.CreateUpdateStackExecutor")
 
+  val stackStatusFetcher: (AmazonCloudFormation, StackId) => (String, String) = (cfClient, id) => {
+    val stack = cfClient.describeStacks(new DescribeStacksRequest().withStackName(id)).getStacks.asScala.head
+    (stack.getStackStatus, stack.getStackStatusReason)
+  }
+
+  val changeSetStatusFetcher: (AmazonCloudFormation, ChangeSetId) => (String, String) = (cfClient, id) => {
+    val changeSet = cfClient.describeChangeSet(new DescribeChangeSetRequest().withChangeSetName(id))
+    (changeSet.getStatus, changeSet.getStatusReason)
+  }
+
   def execute(
-      changeSetReady: (AmazonCloudFormation, ActorSystem) => (String, String) => Unit Or AutomationError = (cf, as) =>
-        waitForChangeSetReady(cf, as),
       deleteChangeSetIfExists: (AmazonCloudFormation) => (ChangeSetType, String, String) => Unit Or AutomationError =
         (cf) => deleteExistingChangeSetByNameIfExists(cf),
       capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
       changeSetNameBuild: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
       changeSetType: (AmazonCloudFormation, StackConfig) => ChangeSetType Or AutomationError = determineChangeSetType,
       buildParams: StackConfig => Seq[AWSParam] Or AutomationError = s => buildParameters()(s))(
+      changeSetReady: (AmazonCloudFormation, ChangeSetId, StackName, Status, Seq[Status]) => Unit Or AutomationError,
+      deleteRollbackStackIfExists: (AmazonCloudFormation, StackName) => Unit Or AutomationError,
       trackingTag: (S3File) => AWSTag,
-      actorSystem: ActorSystem,
       iam: IAMCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
       changeSetNamePrefix: ChangeSetNamePrefix,
@@ -84,6 +104,7 @@ object CreateUpdateStackExecutor {
     val changeSetName = changeSetNameBuild(changeSetNamePrefix)
 
     for {
+      _             <- deleteRollbackStackIfExists(cfClient, config.stackName)
       changeSetType <- changeSetType(cfClient, config)
       _             <- deleteChangeSetIfExists(cfClient)(changeSetType, config.stackName, changeSetName)
       params        <- buildParams(config)
@@ -105,7 +126,13 @@ object CreateUpdateStackExecutor {
           val changeSet = cfClient.createChangeSet(changeSetReq)
           //We must wait for the change set Status to reach CREATE_COMPLETE before continuing.
           for {
-            _ <- changeSetReady(cfClient, actorSystem)(changeSet.getId, s3File.key)
+            _ <- changeSetReady(
+              cfClient,
+              changeSet.getId,
+              config.stackName,
+              ChangeSetStatus.CREATE_COMPLETE.toString,
+              Seq(ChangeSetStatus.FAILED.toString, ChangeSetStatus.DELETE_COMPLETE.toString)
+            )
           } yield {
             cfClient.executeChangeSet(new ExecuteChangeSetRequest().withChangeSetName(changeSet.getId))
             Good(())
@@ -205,51 +232,38 @@ object CreateUpdateStackExecutor {
         }
     }
 
-  def waitForChangeSetReady(
+  def deleteRollbackCompleteStackIfExists(
+      waitForStackStatus: (AmazonCloudFormation, StackId, StackName, Status, Seq[Status]) => Unit Or AutomationError)(
       cfClient: AmazonCloudFormation,
-      actorSystem: ActorSystem,
-      maxRetries: Int = 100,
-      maxWaitTime: Duration = 5.minutes,
-      retrySpeed: FiniteDuration = 3.seconds)(changeSetArn: String, stackFile: String): Unit Or AutomationError = {
-
-    implicit val ec: ExecutionContext = actorSystem.dispatcher
-    implicit val sch: Scheduler       = actorSystem.scheduler
-
-    sealed trait StatusException            extends Exception
-    case object PendingException            extends StatusException
-    case class FailedException(msg: String) extends StatusException
-
-    def checkStatus: Unit = {
-      val status = cfClient.describeChangeSet(new DescribeChangeSetRequest().withChangeSetName(changeSetArn))
-
-      ChangeSetStatus.fromValue(status.getStatus) match {
-        case ChangeSetStatus.CREATE_PENDING | ChangeSetStatus.CREATE_IN_PROGRESS => throw PendingException
-        case ChangeSetStatus.CREATE_COMPLETE                                     => ()
-        case _                                                                   => throw FailedException(s"${status.getStatus}. Reason: ${status.getStatusReason}")
-      }
-    }
-
-    def retry(op: => Unit, delay: FiniteDuration, retries: Int): Future[Unit Or AutomationError] =
-      Future(op).map(x => Good(x)) recoverWith {
-        case PendingException if retries > 0 => after(delay, sch)(retry(op, delay, retries - 1))
-        case FailedException(status) =>
-          Future.successful(
-            Bad(StackError(s"Failed to create change set for $stackFile due to unhandled change set status: $status")))
-        case t: AmazonServiceException if t.getStatusCode >= 500 =>
-          logger.error("AWS 500 Service Exception: Failed to wait for change set to be ready", t)
-          Future.successful(
-            Bad(ServiceError(
-              s"AWS 500 Service Exception: Change Set failed to reach CREATE_COMPLETE status for: $stackFile")))
-        case _ =>
-          Future.successful(Bad(StackError(s"Change Set failed to reach CREATE_COMPLETE status for: $stackFile")))
-      }
-
-    //Retry to find final status for up to max time...
+      stackName: StackName): Unit Or AutomationError =
     try {
-      Await.result(retry(checkStatus, retrySpeed, maxRetries), maxWaitTime)
+      val stackReq  = new DescribeStacksRequest().withStackName(stackName)
+      val stackList = cfClient.describeStacks(stackReq).getStacks
+      if (!stackList.isEmpty) {
+        val stack = stackList.asScala.head
+        if (stack.getStackStatus == StackStatus.ROLLBACK_COMPLETE.toString) {
+          val req = new DeleteStackRequest().withStackName(stack.getStackId)
+          cfClient.deleteStack(req)
+
+          //we must WAIT until DELETE_COMPLETE occurs to release this function, else the new stack will fail to launch.
+          waitForStackStatus(cfClient,
+                             stack.getStackId,
+                             stackName,
+                             StackStatus.DELETE_COMPLETE.toString,
+                             Seq(StackStatus.DELETE_FAILED.toString))
+        } else {
+          Good(())
+        }
+      } else Good(())
     } catch {
-      case _: Throwable =>
-        Bad(StackError(s"Failed to create change set due to timeout waiting for change set status: $stackFile"))
+      case e: AmazonServiceException if e.getStatusCode >= 500 =>
+        logger.error(s"AWS 500 Service Exception: Failed to lookup / delete rollback-stack stack: $stackName.", e)
+        Bad(ServiceError(s"AWS 500 Service Exception: Failed to lookup / delete rollback-stack stack: $stackName."))
+      case e: AmazonCloudFormationException if e.getStatusCode == 400 && e.getErrorCode == "ValidationError" =>
+        //Stack does not exist by this stack name.
+        Good(())
+      case e: Throwable =>
+        logger.error(s"Failed to lookup / delete rollback-stack stack: $stackName", e)
+        Bad(StackError(s"Failed to lookup / delete rollback-stack stack: $stackName. Error: ${e.getMessage}"))
     }
-  }
 }

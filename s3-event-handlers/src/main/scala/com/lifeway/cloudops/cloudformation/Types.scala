@@ -14,7 +14,11 @@ object Types {
   type ExternalNotifySNSArn       = Option[String]
   type TrackingTagName            = String
   type TrackingTagValuePrefix     = Option[String]
-
+  type StackStatus                = String
+  type StackId                    = String
+  type ChangeSetId                = String
+  type StackName                  = String
+  type Status                     = String
 }
 
 /**

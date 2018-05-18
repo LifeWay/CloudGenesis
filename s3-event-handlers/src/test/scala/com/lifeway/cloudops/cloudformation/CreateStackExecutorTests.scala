@@ -13,6 +13,8 @@ import com.amazonaws.services.cloudformation.model.{
   CreateChangeSetResult,
   DeleteChangeSetRequest,
   DeleteChangeSetResult,
+  DeleteStackRequest,
+  DeleteStackResult,
   DescribeChangeSetRequest,
   DescribeChangeSetResult,
   DescribeStacksRequest,
@@ -24,14 +26,11 @@ import com.amazonaws.services.cloudformation.model.{
   Parameter => AWSParam,
   Tag => AWSTag
 }
-import com.lifeway.cloudops.cloudformation.Types.TrackingTagValuePrefix
-import org.scalactic.{Bad, Good, Or}
+import com.lifeway.cloudops.cloudformation.Types.{StackId, StackName, Status, TrackingTagValuePrefix}
+import org.scalactic._
 
 import scala.collection.JavaConverters._
-import scala.concurrent.duration._
 import utest._
-
-import scala.util.{Failure, Success}
 
 object CreateStackExecutorTests extends TestSuite {
   val testSystem = ActorSystem("testSystem")
@@ -70,108 +69,39 @@ object CreateStackExecutorTests extends TestSuite {
       }
     }
 
-    'waitForChangeSet - {
-      def cfClientWithStatus(status: Seq[ChangeSetStatus]): AmazonCloudFormation =
-        new CloudFormationTestClient {
-          var calls = 0
-          override def describeChangeSet(req: DescribeChangeSetRequest): DescribeChangeSetResult =
-            if (req.getChangeSetName.equals("cf-automation-set-arn")) {
-              val result = new DescribeChangeSetResult().withStatus(status(calls))
-              calls = calls + 1
-              result
-            } else throw new IllegalArgumentException
+    'stackStatusFetcher - {
+      'shouldReturnStackStatus - {
+        val testCfClient = new CloudFormationTestClient {
+          override def describeStacks(r: DescribeStacksRequest): DescribeStacksResult =
+            if (r.getStackName == "expected-stack-name") {
+              val stack = new Stack()
+              stack.setStackStatus(StackStatus.CREATE_COMPLETE)
+              stack.setStackStatusReason("User Created")
+              val res = new DescribeStacksResult()
+              res.setStacks(Seq(stack).asJava)
+              res
+            } else throw new IllegalArgumentException("unexpected value found")
         }
 
-      'returnGoodWhenSuccessful - {
-        val cfClient = cfClientWithStatus(Seq(ChangeSetStatus.CREATE_COMPLETE))
-
-        val result =
-          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem)("cf-automation-set-arn", "demo-stack")
-        assert(result == Good(()))
+        val res = CreateUpdateStackExecutor.stackStatusFetcher(testCfClient, "expected-stack-name")
+        assert(res == (StackStatus.CREATE_COMPLETE.toString, "User Created"))
       }
+    }
 
-      'returnBadWithFailed - {
-        val cfClient = cfClientWithStatus(Seq(ChangeSetStatus.FAILED))
-
-        val result =
-          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem)("cf-automation-set-arn", "demo-stack")
-        assert(
-          result == Bad(StackError(
-            "Failed to create change set for demo-stack due to unhandled change set status: FAILED. Reason: null")))
-      }
-
-      'returnBadWhenAWSIsDown - {
-
-        val cfClient = new CloudFormationTestClient {
-          var calls = 0
-          override def describeChangeSet(req: DescribeChangeSetRequest): DescribeChangeSetResult = {
-            val ex = new AmazonServiceException("boom")
-            ex.setStatusCode(500)
-            throw ex
-          }
+    'changeSetStatusFetcher - {
+      'shouldReturnChangeSetStatus - {
+        val testCfClient = new CloudFormationTestClient {
+          override def describeChangeSet(r: DescribeChangeSetRequest): DescribeChangeSetResult =
+            if (r.getChangeSetName == "expected-stack-name") {
+              val res = new DescribeChangeSetResult()
+              res.setStatus(ChangeSetStatus.CREATE_COMPLETE.toString)
+              res.setStatusReason("User Requested")
+              res
+            } else throw new IllegalArgumentException("unexpected value found")
         }
 
-        val result =
-          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem)("cf-automation-set-arn", "demo-stack")
-        assert(result == Bad(
-          ServiceError("AWS 500 Service Exception: Change Set failed to reach CREATE_COMPLETE status for: demo-stack")))
-      }
-
-      'returnGoodAfterWaitingCycles - {
-        val cfClient = cfClientWithStatus(
-          Seq(ChangeSetStatus.CREATE_PENDING,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.CREATE_COMPLETE))
-        val result =
-          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem, retrySpeed = 1.milli)(
-            "cf-automation-set-arn",
-            "demo-stack")
-        assert(result == Good(()))
-      }
-
-      'returnBadAfterWaitingCyclesAndFails - {
-        val cfClient = cfClientWithStatus(
-          Seq(ChangeSetStatus.CREATE_PENDING,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.FAILED))
-        val result =
-          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem, retrySpeed = 1.milli)(
-            "cf-automation-set-arn",
-            "demo-stack")
-        assert(
-          result == Bad(StackError(
-            "Failed to create change set for demo-stack due to unhandled change set status: FAILED. Reason: null")))
-      }
-
-      'returnBadIfCyclesRetriesTooManyTimes - {
-        val cfClient = cfClientWithStatus(
-          Seq(ChangeSetStatus.CREATE_PENDING,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.FAILED))
-        val result =
-          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient, testSystem, maxRetries = 1, retrySpeed = 1.milli)(
-            "cf-automation-set-arn",
-            "demo-stack")
-        assert(result == Bad(StackError("Change Set failed to reach CREATE_COMPLETE status for: demo-stack")))
-      }
-
-      'returnBadIfMaxWaitExpires - {
-        val cfClient = cfClientWithStatus(
-          Seq(ChangeSetStatus.CREATE_PENDING,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.CREATE_IN_PROGRESS,
-              ChangeSetStatus.FAILED))
-        val result =
-          CreateUpdateStackExecutor.waitForChangeSetReady(cfClient,
-                                                          testSystem,
-                                                          maxWaitTime = 5.millis,
-                                                          retrySpeed = 25.millis)("cf-automation-set-arn", "demo-stack")
-        assert(
-          result == Bad(
-            StackError("Failed to create change set due to timeout waiting for change set status: demo-stack")))
+        val res = CreateUpdateStackExecutor.changeSetStatusFetcher(testCfClient, "expected-stack-name")
+        assert(res == (ChangeSetStatus.CREATE_COMPLETE.toString, "User Requested"))
       }
     }
 
@@ -377,6 +307,98 @@ object CreateStackExecutorTests extends TestSuite {
       }
     }
 
+    'deleteRollbackCompleteStackIfExists - {
+      val waitForStatus: (Unit Or AutomationError) => (AmazonCloudFormation,
+                                                       StackId,
+                                                       StackName,
+                                                       Status,
+                                                       Seq[Status]) => Unit Or AutomationError =
+        (returnVal) => (_, _, _, _, _) => returnVal
+
+      val testClient = new CloudFormationTestClient {
+        override def describeStacks(r: DescribeStacksRequest): DescribeStacksResult =
+          if (r.getStackName == "does-not-exist-no-error") {
+            new DescribeStacksResult().withStacks(Seq.empty[Stack].asJava)
+          } else if (r.getStackName == "does-not-exist-with-error") {
+            val ex = new AmazonCloudFormationException("Stack does not exist")
+            ex.setStatusCode(400)
+            ex.setErrorCode("ValidationError")
+            throw ex
+          } else if (r.getStackName == "exists-but-not-as-rollback-complete-status") {
+            val stack = new Stack()
+            stack.setStackStatus(StackStatus.CREATE_COMPLETE)
+            new DescribeStacksResult().withStacks(Seq(stack).asJava)
+          } else if (r.getStackName == "exists-as-rollback-complete") {
+            val stack = new Stack()
+            stack.setStackId("existing-stack-id")
+            stack.setStackStatus(StackStatus.ROLLBACK_COMPLETE)
+            new DescribeStacksResult().withStacks(Seq(stack).asJava)
+          } else if (r.getStackName == "aws-down") {
+            val ex = new AmazonServiceException("boom")
+            ex.setStatusCode(500)
+            throw ex
+          } else if (r.getStackName == "other-error") {
+            throw new AmazonServiceException("some-problem")
+          } else throw new IllegalArgumentException("unexpected value!")
+
+        override def deleteStack(r: DeleteStackRequest): DeleteStackResult =
+          if (r.getStackName == "existing-stack-id") {
+            new DeleteStackResult
+          } else throw new IllegalArgumentException("unexpected value!")
+
+      }
+
+      'shouldReturnGoodWhenStackDoesntExistNoError - {
+        val res = CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(waitForStatus(Good(())))(
+          testClient,
+          "does-not-exist-no-error")
+        assert(res == Good(()))
+      }
+
+      'shouldReturnGoodWhenStackDoesntExistAs400Error - {
+        val res = CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(waitForStatus(Good(())))(
+          testClient,
+          "does-not-exist-with-error")
+        assert(res == Good(()))
+      }
+
+      'shouldReturnGoodWhenStackExistsButNotRollBackCompleteStatus - {
+        val res = CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(waitForStatus(Good(())))(
+          testClient,
+          "exists-but-not-as-rollback-complete-status")
+        assert(res == Good(()))
+      }
+
+      'shouldReturnGoodWhenStackExistAndRollBackCompletePrevStackDeletedSuccessfully - {
+        val res = CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(waitForStatus(Good(())))(
+          testClient,
+          "exists-as-rollback-complete")
+        assert(res == Good(()))
+      }
+
+      'shouldReturnBadWhenStackExistAndRollBackCompleteButDeleteFails - {
+        val res = CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(waitForStatus(Bad(StackError("Boom"))))(
+          testClient,
+          "exists-as-rollback-complete")
+        assert(res == Bad(StackError("Boom")))
+      }
+
+      'shouldReturnBadWhenAWSDown - {
+        val res =
+          CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(waitForStatus(Good(())))(testClient, "aws-down")
+        assert(
+          res == Bad(
+            ServiceError(s"AWS 500 Service Exception: Failed to lookup / delete rollback-stack stack: aws-down.")))
+      }
+
+      'shouldReturnBadOnError - {
+        val res = CreateUpdateStackExecutor.deleteRollbackCompleteStackIfExists(waitForStatus(Good(())))(testClient,
+                                                                                                         "other-error")
+        assert(res == Bad(StackError(
+          s"Failed to lookup / delete rollback-stack stack: other-error. Error: some-problem (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
+      }
+    }
+
     'buildParams - {
       'returnStaticParamsWithoutParamTypes - {
         val result = CreateUpdateStackExecutor.buildParameters(s => Good(s"ssm: $s"))(stackConfig)
@@ -464,13 +486,18 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-name"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -513,13 +540,18 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, Some("some-role-name"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-name"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -548,13 +580,14 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, None, None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()), (_, _) => Good(()), _ => autoTag, false, None, None, "some-sns-arn")(cfClient,
+                                                                                                            stackConfig,
+                                                                                                            s3File)
 
         assert(result.isGood)
       }
@@ -569,13 +602,18 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Bad(StackError("boom")),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Bad(StackError("boom")),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-arn"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
       }
@@ -590,13 +628,18 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Bad(StackError("delete go boom")),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-arn"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("delete go boom")))
       }
@@ -611,15 +654,46 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Bad(StackError("boom")),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-arn"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
+      }
+
+      'returnBadWhenDeleteRollbackStackIfExistsFails - {
+        val cfClient = new CloudFormationTestClient {
+          override def createChangeSet(createChangeSetRequest: CreateChangeSetRequest): CreateChangeSetResult =
+            new CreateChangeSetResult()
+
+          override def executeChangeSet(executeChangeSetRequest: ExecuteChangeSetRequest): ExecuteChangeSetResult =
+            new ExecuteChangeSetResult()
+        }
+
+        val result = CreateUpdateStackExecutor.execute(
+          deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
+          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          changeSetNameBuild = _ => "my-change-set-name",
+          changeSetType = (_, _) => Good(ChangeSetType.CREATE),
+          buildParams = (_) => Good(parameters)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Bad(StackError("Failed to delete existing rollback-stack")),
+          _ => autoTag,
+          false,
+          None,
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
+
+        assert(result == Bad(StackError("Failed to delete existing rollback-stack")))
       }
 
       'returnBadWhenCreateChangeSetFails - {
@@ -632,13 +706,18 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-arn"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError(
           "Failed to create change set and execute it for: stacks/my-account-name.123456789/my/stack/path.yaml. Reason: boom (Service: null; Status Code: 0; Error Code: null; Request ID: null)")))
@@ -655,13 +734,18 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Bad(StackError("params boom"))
-        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-arn"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("params boom")))
       }
@@ -679,13 +763,18 @@ object CreateStackExecutorTests extends TestSuite {
         }
 
         val result = CreateUpdateStackExecutor.execute(
-          changeSetReady = (_, _) => (_, _) => Good(()),
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters)
-        )(_ => autoTag, testSystem, false, Some("some-role-arn"), None, "some-sns-arn")(cfClient, stackConfig, s3File)
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          Some("some-role-arn"),
+          None,
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(ServiceError(
           "Failed to create change set and execute it for: stacks/my-account-name.123456789/my/stack/path.yaml. Reason: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)")))

@@ -32,7 +32,7 @@ lazy val root = (project in file("."))
   .dependsOn(common)
 
 testFrameworks += new TestFramework("utest.runner.Framework")
-coverageMinimum := 97
+coverageMinimum := 98
 coverageFailOnMinimum := true
 
 enablePlugins(JavaAppPackaging)
