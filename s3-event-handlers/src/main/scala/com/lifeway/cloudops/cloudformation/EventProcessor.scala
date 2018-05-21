@@ -3,9 +3,14 @@ package com.lifeway.cloudops.cloudformation
 import java.io.IOException
 
 import com.amazonaws.{AmazonServiceException, SdkClientException}
-import com.amazonaws.auth.{AWSCredentialsProvider, STSAssumeRoleSessionCredentialsProvider}
+import com.amazonaws.auth.{
+  AWSCredentialsProvider,
+  AWSStaticCredentialsProvider,
+  BasicAWSCredentials,
+  STSAssumeRoleSessionCredentialsProvider
+}
 import com.amazonaws.services.cloudformation.{AmazonCloudFormation, AmazonCloudFormationClientBuilder}
-import com.amazonaws.services.s3.AmazonS3
+import com.amazonaws.services.s3.{AmazonS3, AmazonS3Client, AmazonS3ClientBuilder}
 import com.amazonaws.services.s3.model.{GetObjectRequest, ListVersionsRequest}
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService
 import com.amazonaws.services.sns.AmazonSNS
@@ -51,8 +56,15 @@ class EventProcessorDefaultFunctions(stsClient: AWSSecurityTokenService,
     extends EventProcessor {
   override val processEvent: S3File => Unit Or AutomationError = {
     val s3Content    = EventProcessor.getS3ContentAsString(s3Client) _
+    val s3FileExists = EventProcessor.checkFileExists(s3Client) _
     val clientLoader = EventProcessor.clientLoader(assumeRoleName, stsClient) _
-    EventProcessor.handleStack(s3Content, clientLoader, snsClient, externalSNSArn, semanticStackNaming, stackExecutors)
+    EventProcessor.handleStack(s3Content,
+                               s3FileExists,
+                               clientLoader,
+                               snsClient,
+                               externalSNSArn,
+                               semanticStackNaming,
+                               stackExecutors)
   }
 }
 // $COVERAGE-ON$
@@ -79,6 +91,7 @@ object EventProcessor {
     * @return
     */
   def handleStack(s3ContentString: S3File => Try[String],
+                  s3FileExists: (String, String) => Boolean Or AutomationError,
                   loadClient: S3File => AmazonCloudFormation,
                   snsClient: AmazonSNS,
                   externalSNSArn: ExternalNotifySNSArn,
@@ -99,7 +112,16 @@ object EventProcessor {
         case e: Throwable =>
           Bad(StackConfigError(s"Failed to retrieve or parse stack file for: ${s3File.key}. Details: ${e.getMessage}"))
       },
-      g => Good(g)
+      stackConfig => {
+        s3FileExists(s3File.bucket, s"templates/${stackConfig.template}").flatMap(
+          exists =>
+            if (exists) Good(stackConfig)
+            else
+              Bad(
+                StackConfigError(
+                  s"Invalid template path: ${stackConfig.template} does not exist in the templates directory."))
+        )
+      }
     )
 
     val externalNotifier: (StackConfig) => Unit Or AutomationError = config =>
@@ -152,6 +174,20 @@ object EventProcessor {
 
     AmazonCloudFormationClientBuilder.standard().withCredentials(credentialsProvider).build()
   }
+
+  def checkFileExists(s3Client: AmazonS3)(bucket: String, key: String): Boolean Or AutomationError =
+    try {
+      Good(s3Client.doesObjectExist(bucket, key))
+    } catch {
+      case e: AmazonServiceException if e.getStatusCode >= 500 =>
+        logger.error(s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key", e)
+        Bad(
+          ServiceError(
+            s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key. Reason: ${e.getMessage}"))
+      case e: Throwable =>
+        logger.error(s"Failed to check for existence of s3 file: $key.", e)
+        Bad(StackError(s"Failed to check for existence of s3 file: $key. Reason: ${e.getMessage}"))
+    }
 
   /**
     * Given an S3 Client and a given S3File (where the file defines the event type on the file, the versionId, bucket,

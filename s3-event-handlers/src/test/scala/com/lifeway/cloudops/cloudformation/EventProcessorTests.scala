@@ -117,6 +117,51 @@ object EventProcessorTests extends TestSuite {
       }
     }
 
+    'checkFileExists - {
+      'returnGoodTrueIfFileExists - {
+        val s3Client = new AmazonS3TestClient {
+          override def doesObjectExist(bucketName: String, objectName: String): Boolean = true
+        }
+
+        val result = EventProcessor.checkFileExists(s3Client)("abc", "thing/x.yaml")
+        assert(result == Good(true))
+      }
+
+      'returnGoodFalseIfFileMissing - {
+        val s3Client = new AmazonS3TestClient {
+          override def doesObjectExist(bucketName: String, objectName: String): Boolean = false
+        }
+
+        val result = EventProcessor.checkFileExists(s3Client)("abc", "thing/x.yaml")
+        assert(result == Good(false))
+      }
+
+      'returnFailureIfAWSIsDown - {
+        val s3Client = new AmazonS3TestClient {
+          override def doesObjectExist(bucketName: String, objectName: String): Boolean = {
+            val ex = new AmazonServiceException("boom")
+            ex.setStatusCode(500)
+            throw ex
+          }
+        }
+
+        val result = EventProcessor.checkFileExists(s3Client)("abc", "thing/x.yaml")
+        assert(result.isBad)
+        assert(result.swap.get == ServiceError(
+          "AWS 500 Service Exception: Failed to check for existence of s3 file: thing/x.yaml. Reason: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)"))
+      }
+
+      'returnStackErrorForOtherAWSErrors - {
+        val s3Client = new AmazonS3TestClient {
+          override def doesObjectExist(bucketName: String, objectName: String): Boolean = throw new Exception("boom")
+        }
+
+        val result = EventProcessor.checkFileExists(s3Client)("abc", "thing/x.yaml")
+        assert(result.isBad)
+        assert(result.swap.get == StackError("Failed to check for existence of s3 file: thing/x.yaml. Reason: boom"))
+      }
+    }
+
     'handleStack - {
       val sampleStackYaml =
         """
@@ -143,7 +188,13 @@ object EventProcessorTests extends TestSuite {
         })
 
         val result =
-          EventProcessor.handleStack(_ => Success(sampleStackYaml), _ => null, null, None, false, executors)(s3File)
+          EventProcessor.handleStack(_ => Success(sampleStackYaml),
+                                     (_, _) => Good(true),
+                                     _ => null,
+                                     null,
+                                     None,
+                                     false,
+                                     executors)(s3File)
         assert(result == Good(()))
       }
 
@@ -161,12 +212,23 @@ object EventProcessorTests extends TestSuite {
         )
 
         val createExecutor =
-          EventProcessor.handleStack(_ => Success(sampleStackYaml), _ => null, null, None, false, executors)(s3File)
+          EventProcessor.handleStack(_ => Success(sampleStackYaml),
+                                     (_, _) => Good(true),
+                                     _ => null,
+                                     null,
+                                     None,
+                                     false,
+                                     executors)(s3File)
         assert(createExecutor == Bad(StackError("The CreateUpdate executor!")))
 
         val updateExecutor =
-          EventProcessor.handleStack(_ => Success(sampleStackYaml), _ => null, null, None, false, executors)(
-            s3File.copy(eventType = DeletedEvent))
+          EventProcessor.handleStack(_ => Success(sampleStackYaml),
+                                     (_, _) => Good(true),
+                                     _ => null,
+                                     null,
+                                     None,
+                                     false,
+                                     executors)(s3File.copy(eventType = DeletedEvent))
         assert(updateExecutor == Bad(StackConfigError("The Delete Executor!")))
       }
 
@@ -179,12 +241,39 @@ object EventProcessorTests extends TestSuite {
         })
 
         val result =
-          EventProcessor.handleStack(_ => Failure(new Exception("S3 Fail")), _ => null, null, None, false, executors)(
-            s3File)
+          EventProcessor.handleStack(_ => Failure(new Exception("S3 Fail")),
+                                     (_, _) => Good(true),
+                                     _ => null,
+                                     null,
+                                     None,
+                                     false,
+                                     executors)(s3File)
         assert(result.isBad)
         assert(
           result.swap.get == StackConfigError(
             "Failed to retrieve or parse stack file for: stacks/test.123/productx/stackz.yaml. Details: S3 Fail"))
+      }
+
+      'returnFailureIfTemplateIsNotInBucket - {
+        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
+          override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
+            if (sc.stackName.equals("productx-stackz")) Good(())
+            else throw new IllegalArgumentException
+        })
+
+        val result =
+          EventProcessor.handleStack(_ => Success(sampleStackYaml),
+                                     (_, _) => Good(false),
+                                     _ => null,
+                                     null,
+                                     None,
+                                     false,
+                                     executors)(s3File)
+        assert(result.isBad)
+        assert(
+          result.swap.get == StackConfigError(
+            "Invalid template path: demo/demo-role.yaml does not exist in the templates directory."))
       }
 
       'returnFailureIfAWSIsDown - {
@@ -196,7 +285,8 @@ object EventProcessorTests extends TestSuite {
             throw ex
         }
 
-        val result = EventProcessor.handleStack(s3Failure, _ => null, null, None, false, null)(s3File)
+        val result =
+          EventProcessor.handleStack(s3Failure, (_, _) => Good(true), _ => null, null, None, false, null)(s3File)
         assert(result.isBad)
         assert(result.swap.get == ServiceError(
           "Failed to retrieve stack file: stacks/test.123/productx/stackz.yaml due to: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)"))
@@ -211,7 +301,13 @@ object EventProcessorTests extends TestSuite {
         })
 
         val result =
-          EventProcessor.handleStack(_ => Success("%NotYaml!"), _ => null, null, None, false, executors)(s3File)
+          EventProcessor.handleStack(_ => Success("%NotYaml!"),
+                                     (_, _) => Good(true),
+                                     _ => null,
+                                     null,
+                                     None,
+                                     false,
+                                     executors)(s3File)
         assert(result.isBad)
         assert(
           result.swap.get
@@ -235,7 +331,13 @@ object EventProcessorTests extends TestSuite {
             else throw new IllegalArgumentException
         })
         val result =
-          EventProcessor.handleStack(_ => Success(missingTemplateYaml), _ => null, null, None, false, executors)(s3File)
+          EventProcessor.handleStack(_ => Success(missingTemplateYaml),
+                                     (_, _) => Good(true),
+                                     _ => null,
+                                     null,
+                                     None,
+                                     false,
+                                     executors)(s3File)
         assert(result.isBad)
         assert(
           result.swap.get
@@ -253,6 +355,7 @@ object EventProcessorTests extends TestSuite {
         })
         val result =
           EventProcessor.handleStack(_ => Success(sampleStackYaml),
+                                     (_, _) => Good(true),
                                      _ => null,
                                      null,
                                      None,
@@ -285,6 +388,7 @@ object EventProcessorTests extends TestSuite {
         })
         val result =
           EventProcessor.handleStack(_ => Success(missingStackName),
+                                     (_, _) => Good(true),
                                      _ => null,
                                      null,
                                      None,
@@ -309,6 +413,7 @@ object EventProcessorTests extends TestSuite {
 
         val result =
           EventProcessor.handleStack(_ => Success(sampleStackYaml),
+                                     (_, _) => Good(true),
                                      _ => null,
                                      snsClient,
                                      Some("external-sns-arm"),
@@ -331,6 +436,7 @@ object EventProcessorTests extends TestSuite {
 
         val result =
           EventProcessor.handleStack(_ => Success(sampleStackYaml),
+                                     (_, _) => Good(true),
                                      _ => null,
                                      snsClient,
                                      Some("external-sns-arm"),
