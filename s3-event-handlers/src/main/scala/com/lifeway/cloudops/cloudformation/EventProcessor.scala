@@ -175,15 +175,6 @@ object EventProcessor {
     AmazonCloudFormationClientBuilder.standard().withCredentials(credentialsProvider).build()
   }
 
-//  def main(args: Array[String]): Unit = {
-//    val creds  = new BasicAWSCredentials("AKIAIXYOQ2WWQRWA42FQ", "xnpBgDGVFuqc+4OWk1ELYKyM8PtiHS0CyBf1pGbY")
-//    val client = AmazonS3ClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(creds)).build()
-//
-//    val res = checkFileExists(client)("cloudformation-gitops-poc-cfstack-bucket",
-//                                      "templates/cloudops/user-roles/full-admin.yaml")
-//    println(res)
-//  }
-
   def checkFileExists(s3Client: AmazonS3)(bucket: String, key: String): Boolean Or AutomationError =
     try {
       Good(s3Client.doesObjectExist(bucket, key))
