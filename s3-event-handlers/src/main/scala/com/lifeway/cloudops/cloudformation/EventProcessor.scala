@@ -3,14 +3,9 @@ package com.lifeway.cloudops.cloudformation
 import java.io.IOException
 
 import com.amazonaws.{AmazonServiceException, SdkClientException}
-import com.amazonaws.auth.{
-  AWSCredentialsProvider,
-  AWSStaticCredentialsProvider,
-  BasicAWSCredentials,
-  STSAssumeRoleSessionCredentialsProvider
-}
+import com.amazonaws.auth.{AWSCredentialsProvider, STSAssumeRoleSessionCredentialsProvider}
 import com.amazonaws.services.cloudformation.{AmazonCloudFormation, AmazonCloudFormationClientBuilder}
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3Client, AmazonS3ClientBuilder}
+import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model.{GetObjectRequest, ListVersionsRequest}
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService
 import com.amazonaws.services.sns.AmazonSNS
@@ -57,7 +52,7 @@ class EventProcessorDefaultFunctions(stsClient: AWSSecurityTokenService,
   override val processEvent: S3File => Unit Or AutomationError = {
     val s3Content    = EventProcessor.getS3ContentAsString(s3Client) _
     val s3FileExists = EventProcessor.checkFileExists(s3Client) _
-    val clientLoader = EventProcessor.clientLoader(assumeRoleName, stsClient) _
+    val clientLoader = EventProcessor.clientLoader()(assumeRoleName, stsClient) _
     EventProcessor.handleStack(s3Content,
                                s3FileExists,
                                clientLoader,
@@ -73,10 +68,20 @@ object EventProcessor {
   val logger = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.EventProcessor")
 
   /**
-    * Parses account numbers out of a semantically named string, e.g. "stacks/some-account-name.123456789/something/something.key" while also
+    * Parses account numbers out of a semantically named string, e.g. "stacks/some-account-name.123456789/us-east-1/something/something.key" while also
     * supporting strings where there was no account name added, e.g. "123456789"
     */
   val accountNumberParser: String => String = key => key.split("/", 3)(1).split("""\.""").reverse.head
+
+  /**
+    * Parses account numbers out of a semantically named string, e.g. "stacks/some-account-name.123456789/us-east-1/something/something.key"
+    * will return the value of "us-east-1"
+    */
+  val regionIdParser: String => String = key => key.split("/", 4)(2)
+
+  val cfClientBuilder: (AWSCredentialsProvider, String) => AmazonCloudFormationClientBuilder =
+    (credProvider, regionId) =>
+      AmazonCloudFormationClientBuilder.standard().withCredentials(credProvider).withRegion(regionId)
 
   /**
     * Handles a stack launch or delete, capturing any exceptions and turning them into Bad[ErrorType] as the underlying
@@ -163,16 +168,18 @@ object EventProcessor {
     * @param stsClient
     * @return
     */
-  def clientLoader(assumeRoleName: AssumeRoleName, stsClient: AWSSecurityTokenService)(
+  def clientLoader(cfClientBuilder: (AWSCredentialsProvider, String) => AmazonCloudFormationClientBuilder =
+                     cfClientBuilder)(assumeRoleName: AssumeRoleName, stsClient: AWSSecurityTokenService)(
       event: S3File): AmazonCloudFormation = {
     val accountId             = accountNumberParser(event.key)
+    val regionId              = regionIdParser(event.key)
     val assumeRoleArn: String = s"arn:aws:iam::$accountId:role/$assumeRoleName"
     val credentialsProvider: AWSCredentialsProvider =
       new STSAssumeRoleSessionCredentialsProvider.Builder(assumeRoleArn, "CloudFormation-GitOps")
         .withStsClient(stsClient)
         .build()
 
-    AmazonCloudFormationClientBuilder.standard().withCredentials(credentialsProvider).build()
+    cfClientBuilder(credentialsProvider, regionId).build()
   }
 
   def checkFileExists(s3Client: AmazonS3)(bucket: String, key: String): Boolean Or AutomationError =

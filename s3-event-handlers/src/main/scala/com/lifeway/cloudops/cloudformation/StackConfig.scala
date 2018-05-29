@@ -33,7 +33,7 @@ object StackConfig {
       Left(DecodingFailure("Expected Boolean, Number, or String", c.history))
   }
 
-  val semanticStackName = (key: String) => key.split("/", 3).last.replace("/", "-").split("""\.""").head
+  val semanticStackName = (key: String) => key.split("/", 4).last.replace("/", "-").split("""\.""").head
 
   def decoder(fileKey: String): Decoder[StackConfig] = Decoder[StackConfig] { c =>
     for {
