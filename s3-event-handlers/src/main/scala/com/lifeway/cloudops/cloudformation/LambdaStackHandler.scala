@@ -135,8 +135,8 @@ object LambdaStackHandler {
       externalSNSArn: ExternalNotifySNSArn
   ): EventProcessor Or AutomationError = {
     val eventProcessorOpt: Option[EventProcessor] = for {
-      assumeRoleName <- envFetch("IAM_ASSUME_ROLE_NAME")
-      snsEventsArn   <- envFetch("CF_EVENTS_TOPIC_ARN")
+      assumeRoleName     <- envFetch("IAM_ASSUME_ROLE_NAME")
+      snsEventsTopicName <- envFetch("CF_EVENTS_TOPIC_NAME")
     } yield {
       val executors: Map[EventType, StackExecutor] = Map(
         CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(system,
@@ -145,7 +145,7 @@ object LambdaStackHandler {
                                                                            changeSetNamePrefix,
                                                                            trackingTagName,
                                                                            trackingTagValuePrefix,
-                                                                           snsEventsArn),
+                                                                           snsEventsTopicName),
         DeletedEvent -> DeleteStackExecutorDefaultFunctions
       )
       new EventProcessorDefaultFunctions(stsClient,

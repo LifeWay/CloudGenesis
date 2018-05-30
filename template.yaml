@@ -277,6 +277,7 @@ Resources:
   CloudFormationEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
+      TopicName: !Sub "${AWS::StackName}-CloudFormationEventsTopic"
       Subscription:
       - Endpoint:
           Fn::GetAtt:
@@ -483,7 +484,7 @@ Resources:
         TargetArn: !Ref ErrorsTopic # DLQ should be rarely thrown, msg won't be pretty formatted at this handler, but it will print
       Environment:
         Variables:
-          CF_EVENTS_TOPIC_ARN: !Ref CloudFormationEventsTopic
+          CF_EVENTS_TOPIC_NAME: !Sub "${AWS::StackName}-CloudFormationEventsTopic"
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
           IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName
@@ -537,6 +538,7 @@ Resources:
   CFNotifyFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-CFEventsNotification"
       Description: Lambda function to post CF updates to Slack
       Handler: lambda_notify.lambda_handler
       Role: !GetAtt CFNotifyRole.Arn
@@ -551,15 +553,161 @@ Resources:
           WEBHOOK: !Ref SlackWebHookUrl
           CHANNEL: !Ref SlackChannel
 
-  CFNotifyInvokePermission:
+  #
+  # This is painful, but the AWS Lambda Permission source arn pattern won't let you use wildcards. The arn has to be
+  # explicit - as a result, in order to allow SNS topics within the same account as the deployer to invoke CF Notify
+  # lambda, we have to grant an explicit perm to every possible region for the SNS topic that would be created in that
+  # region.
+  #
+
+  #US Regions
+  CFNotifyInvokePermissionUsEast1:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName:
         Ref: CFNotifyFunction
       Action: lambda:InvokeFunction
       Principal: sns.amazonaws.com
-      SourceArn:
-        Ref: CloudFormationEventsTopic
+      SourceArn: !Sub "arn:aws:sns:us-east-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionUsEast2:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:us-east-2:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionUsWest1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:us-west-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionUsWest2:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:us-west-2:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  #EU Regions
+  CFNotifyInvokePermissionEuWest1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:eu-west-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionEuWest2:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:eu-west-2:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionEuWest3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:eu-west-3:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionEuCentral1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:eu-central-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  #AP Regions
+  CFNotifyInvokePermissionApSouth1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:ap-south-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionApSouthEast1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:ap-southeast-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionApSouthEast2:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:ap-southeast-2:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionApNorthEast1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:ap-northeast-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionApNorthEast2:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:ap-northeast-2:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  CFNotifyInvokePermissionApNorthEast3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:ap-northeast-3:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  #South America Regions
+  CFNotifyInvokePermissionApSaEast1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:sa-east-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
+
+  #Canada Regions
+  CFNotifyInvokePermissionCaCentral1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CFNotifyFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub "arn:aws:sns:ca-central-1:${AWS::AccountId}:${AWS::StackName}-CloudFormationEventsTopic"
 
   SNSDLQErrorFunction:
     Type: AWS::Serverless::Function

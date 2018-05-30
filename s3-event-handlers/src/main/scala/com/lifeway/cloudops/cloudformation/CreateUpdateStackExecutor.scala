@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory
   *
   * @param actorSystem
   * @param iam
-  * @param snsARN
+  * @param cfSNSEventsTopicName
   */
 // $COVERAGE-OFF$
 class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
@@ -43,7 +43,7 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
                                                 changeSetNamePrefix: ChangeSetNamePrefix,
                                                 trackingTagName: TrackingTagName,
                                                 trackingTagValuePrefix: TrackingTagValuePrefix,
-                                                val snsARN: SNSArn)
+                                                val cfSNSEventsTopicName: SNSName)
     extends StackExecutor {
 
   val trackingTagBuilder = CreateUpdateStackExecutor.trackingTagBuilder(trackingTagName, trackingTagValuePrefix) _
@@ -62,7 +62,7 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
         iam,
         cfServiceRoleName,
         changeSetNamePrefix,
-        snsARN
+        cfSNSEventsTopicName
       )
   }
 }
@@ -71,6 +71,12 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
 object CreateUpdateStackExecutor extends StatusCheckerModule {
   val ChangeSetNamePostfix = "cf-deployer-automation"
   val logger               = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.CreateUpdateStackExecutor")
+
+  val snsARNBuilder: (S3File, SNSName) => String = (s3File, cfSNSEventsTopicName) => {
+    val regionId  = EventProcessor.regionIdParser(s3File.key)
+    val accountId = EventProcessor.accountNumberParser(s3File.key)
+    s"arn:aws:sns:$regionId:$accountId:$cfSNSEventsTopicName"
+  }
 
   val stackStatusFetcher: (AmazonCloudFormation, StackId) => (String, String) = (cfClient, id) => {
     val stack = cfClient.describeStacks(new DescribeStacksRequest().withStackName(id)).getStacks.asScala.head
@@ -88,14 +94,17 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
       capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
       changeSetNameBuild: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
       changeSetType: (AmazonCloudFormation, StackConfig) => ChangeSetType Or AutomationError = determineChangeSetType,
-      buildParams: StackConfig => Seq[AWSParam] Or AutomationError = s => buildParameters()(s))(
+      buildParams: StackConfig => Seq[AWSParam] Or AutomationError = s => buildParameters()(s),
+      snsARNBuild: (S3File, SNSName) => String = snsARNBuilder)(
       changeSetReady: (AmazonCloudFormation, ChangeSetId, StackName, Status, Seq[Status]) => Unit Or AutomationError,
       deleteRollbackStackIfExists: (AmazonCloudFormation, StackName) => Unit Or AutomationError,
       trackingTag: (S3File) => AWSTag,
       iam: IAMCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
       changeSetNamePrefix: ChangeSetNamePrefix,
-      snsARN: SNSArn)(cfClient: AmazonCloudFormation, config: StackConfig, s3File: S3File): Unit Or AutomationError = {
+      cfSNSEventsTopicName: SNSName)(cfClient: AmazonCloudFormation,
+                                     config: StackConfig,
+                                     s3File: S3File): Unit Or AutomationError = {
 
     val tags: Seq[AWSTag] =
       config.tags.map(_.map(x => new AWSTag().withKey(x.key).withValue(x.value))).getOrElse(Seq.empty) :+
@@ -115,9 +124,9 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
           .withCapabilities(capabilities(iam): _*)
           .withChangeSetName(changeSetName)
           .withChangeSetType(changeSetType)
-          .withDescription(s"From CF Automation File: ${s3File.key}")
+          .withDescription(s"From GitFormation File: ${s3File.key}")
           .withTemplateURL(s"https://s3.amazonaws.com/${s3File.bucket}/templates/${config.template}")
-          .withNotificationARNs(snsARN)
+          .withNotificationARNs(snsARNBuild(s3File, cfSNSEventsTopicName))
           .withStackName(config.stackName)
           .withParameters(params: _*)
           .withTags(tags: _*)

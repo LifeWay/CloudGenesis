@@ -49,7 +49,7 @@ object LambdaStackHandlerTests extends TestSuite {
       'successfullyLoadEventProcessor - {
         var envFetch: (String) => Option[String] = {
           case "IAM_ASSUME_ROLE_NAME" => Some("IAM_ROLE_NAME")
-          case "CF_EVENTS_TOPIC_ARN"  => Some("SNS_ARN_FOR_CF_EVENTS")
+          case "CF_EVENTS_TOPIC_NAME" => Some("SNS_ARN_FOR_CF_EVENTS")
           case _                      => throw new IllegalArgumentException
         }
 
@@ -70,7 +70,7 @@ object LambdaStackHandlerTests extends TestSuite {
       'returnErrorIfMissingOneOfRoleVars - {
         var envFetch: (String) => Option[String] = {
           case "IAM_ASSUME_ROLE_NAME" => None
-          case "CF_EVENTS_TOPIC_ARN"  => Some("SNS_ARN_FOR_CF_EVENTS")
+          case "CF_EVENTS_TOPIC_NAME" => Some("SNS_ARN_FOR_CF_EVENTS")
           case _                      => throw new IllegalArgumentException
         }
 
