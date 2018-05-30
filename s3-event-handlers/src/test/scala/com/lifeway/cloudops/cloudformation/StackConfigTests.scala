@@ -138,7 +138,7 @@ object StackConfigTests extends TestSuite {
         val decoded: StackConfig =
           parser
             .parse(yaml)
-            .map(_.as[StackConfig](StackConfig.decoder("stacks/acct.123456789/some/random/stack.yaml")))
+            .map(_.as[StackConfig](StackConfig.decoder("stacks/acct.123456789/us-west-2/some/random/stack.yaml")))
             .toTry
             .get
             .toTry

@@ -57,6 +57,18 @@ object CreateStackExecutorTests extends TestSuite {
       }
     }
 
+    'snsARNBuilder - {
+      'shouldBuildProperArn - {
+        val testFile =
+          S3File("some-bucket",
+                 "stacks/my-account-name.123456789/us-west-2/my/stack/path.yaml",
+                 "some-version-id",
+                 CreateUpdateEvent)
+        val result = CreateUpdateStackExecutor.snsARNBuilder(testFile, "some-topic-name")
+        assert(result == "arn:aws:sns:us-west-2:123456789:some-topic-name")
+      }
+    }
+
     'changeSetNameBuilder - {
       'returnStaticValueWhenNone - {
         val name = CreateUpdateStackExecutor.changeSetNameBuilder(None)
@@ -469,10 +481,10 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+                req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.equals(parameters.asJava) &&
                 req.getTags.containsAll(tags.asJava) &&
@@ -490,7 +502,8 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
@@ -523,10 +536,10 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+                req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.size.equals(parameters.size) &&
                 req.getTags.containsAll(tags.asJava) &&
@@ -544,7 +557,8 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
@@ -563,10 +577,10 @@ object CreateStackExecutorTests extends TestSuite {
                 Option(req.getRoleARN).isEmpty &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-                req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
+                req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.equals(parameters.asJava) &&
                 req.getTags.containsAll(tags.asJava) &&
@@ -584,7 +598,8 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s) => s"built-$s"
         )((_, _, _, _, _) => Good(()), (_, _) => Good(()), _ => autoTag, false, None, None, "some-sns-arn")(cfClient,
                                                                                                             stackConfig,
                                                                                                             s3File)

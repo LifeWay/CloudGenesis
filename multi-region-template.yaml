@@ -1,0 +1,29 @@
+#
+# If you wish to deploy to multiple regions from a single git repo (verses the alternative of running a git repo per
+# region with a GitFormation deployed for each of those repos, in their respective region) then you must deploy this
+# stack in each region.
+#
+# This stack will setup the SNS topic for CloudFormation events in each region that the CF events in that region will
+# pipe to. CloudFormation does not support cross-region SNS publishing. So this is a "shim" to assist with that process.
+#
+
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "GitFormation: Multi-Region Support Stack"
+Parameters:
+  GitFormationStackName:
+    Description: "The name you gave the GitFormation stack"
+    Type: String
+
+  GitFormationPrimaryRegion:
+    Description: "The region the GitFormation app is running in"
+    Type: String
+
+Resources:
+  CloudFormationEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${GitFormationStackName}-CloudFormationEventsTopic"
+      Subscription:
+      - Endpoint: !Sub "arn:aws:lambda:${GitFormationPrimaryRegion}:${AWS::AccountId}:function:${GitFormationStackName}-CFEventsNotification"
+        Protocol: lambda

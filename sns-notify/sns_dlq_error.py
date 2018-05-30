@@ -32,7 +32,7 @@ def build_message(attachments, event):
     
     message = {
         'icon_emoji': ':cloud:',
-        'username': 'CloudFormation-GitOps',
+        'username': 'GitFormation',
         'channel': slack.CHANNEL,
         'attachments': attachments
     }
