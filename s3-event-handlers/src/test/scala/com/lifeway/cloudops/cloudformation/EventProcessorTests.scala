@@ -2,6 +2,7 @@ package com.lifeway.cloudops.cloudformation
 
 import java.io.{ByteArrayInputStream, IOException, InputStream}
 
+import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.{AmazonServiceException, SdkClientException}
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.s3.model._
@@ -108,10 +109,20 @@ object EventProcessorTests extends TestSuite {
       }
     }
 
+    'cfClientBuilder - {
+      'givenAWSCredsAndRegionReturnBuilderWithRegion - {
+        val creds   = new AWSStaticCredentialsProvider(new BasicAWSCredentials("some-key-id", "some-secret"))
+        val builder = EventProcessor.cfClientBuilder(creds, "us-west-2")
+        assert(builder.getCredentials.getCredentials.getAWSAccessKeyId == "some-key-id")
+        assert(builder.getCredentials.getCredentials.getAWSSecretKey == "some-secret")
+        assert(builder.getRegion == "us-west-2")
+      }
+    }
+
     'clientLoader - {
       'returnValidClient - {
-        val s3File = S3File("some-bucket", "stacks/test.123/file.yaml", "some-version-id", CreateUpdateEvent)
-        val result = EventProcessor.clientLoader("some-deployer-role", null)(s3File)
+        val s3File = S3File("some-bucket", "stacks/test.123/us-east-1/file.yaml", "some-version-id", CreateUpdateEvent)
+        val result = EventProcessor.clientLoader()("some-deployer-role", null)(s3File)
 
         assert(result != null)
       }
@@ -180,7 +191,8 @@ object EventProcessorTests extends TestSuite {
         """.stripMargin.trim
 
       'returnSuccess - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("my-stack-name")) Good(())
@@ -199,7 +211,8 @@ object EventProcessorTests extends TestSuite {
       }
 
       'useTheCorrectStackExecutorForType - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(
           CreateUpdateEvent -> new StackExecutor {
             override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] =
@@ -232,8 +245,30 @@ object EventProcessorTests extends TestSuite {
         assert(updateExecutor == Bad(StackConfigError("The Delete Executor!")))
       }
 
+      'dontCallS3FileExistsOnDelete - {
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", DeletedEvent)
+        val executors: Map[EventType, StackExecutor] = Map(DeletedEvent -> new StackExecutor {
+          override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
+            if (sc.stackName.equals("my-stack-name")) Good(())
+            else throw new IllegalArgumentException
+        })
+
+        val result =
+          EventProcessor.handleStack(
+            _ => Success(sampleStackYaml),
+            (_, _) => Good(false), //returns false which would fail the result if not DeletedEvent
+            _ => null,
+            null,
+            None,
+            false,
+            executors)(s3File)
+        assert(result == Good(()))
+      }
+
       'returnFailureIfS3ContentFails - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("productx-stackz")) Good(())
@@ -249,13 +284,13 @@ object EventProcessorTests extends TestSuite {
                                      false,
                                      executors)(s3File)
         assert(result.isBad)
-        assert(
-          result.swap.get == StackConfigError(
-            "Failed to retrieve or parse stack file for: stacks/test.123/productx/stackz.yaml. Details: S3 Fail"))
+        assert(result.swap.get == StackConfigError(
+          "Failed to retrieve or parse stack file for: stacks/test.123/us-east-1/productx/stackz.yaml. Details: S3 Fail"))
       }
 
       'returnFailureIfTemplateIsNotInBucket - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("productx-stackz")) Good(())
@@ -277,7 +312,8 @@ object EventProcessorTests extends TestSuite {
       }
 
       'returnFailureIfAWSIsDown - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val s3Failure: S3File => Try[String] = _ =>
           Try {
             val ex = new AmazonServiceException("boom")
@@ -289,11 +325,12 @@ object EventProcessorTests extends TestSuite {
           EventProcessor.handleStack(s3Failure, (_, _) => Good(true), _ => null, null, None, false, null)(s3File)
         assert(result.isBad)
         assert(result.swap.get == ServiceError(
-          "Failed to retrieve stack file: stacks/test.123/productx/stackz.yaml due to: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)"))
+          "Failed to retrieve stack file: stacks/test.123/us-east-1/productx/stackz.yaml due to: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)"))
       }
 
       'returnFailureIfConfigFailsParsing - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("productx-stackz")) Good(())
@@ -324,7 +361,8 @@ object EventProcessorTests extends TestSuite {
             |   Value: dev
           """.stripMargin.trim
 
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("productx-stackz")) Good(())
@@ -347,7 +385,8 @@ object EventProcessorTests extends TestSuite {
       }
 
       'forceSemanticNamingIfEnabled - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("productx-stackz")) Good(())
@@ -380,7 +419,8 @@ object EventProcessorTests extends TestSuite {
             |   Value: dev
           """.stripMargin.trim
 
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("productx-stackz")) Good(())
@@ -398,7 +438,8 @@ object EventProcessorTests extends TestSuite {
       }
 
       'sendExternalNotificationsIfEnabled - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("my-stack-name")) Good(())
@@ -423,7 +464,8 @@ object EventProcessorTests extends TestSuite {
       }
 
       'errorOnExternalNotificationFailing - {
-        val s3File = S3File("some-bucket", "stacks/test.123/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
         val executors: Map[EventType, StackExecutor] = Map(CreateUpdateEvent -> new StackExecutor {
           override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
             if (sc.stackName.equals("my-stack-name")) Good(())
@@ -470,6 +512,17 @@ object EventProcessorTests extends TestSuite {
       'parseAccountNumberWithoutAliasNameWithDeepFileName - {
         val number = EventProcessor.accountNumberParser("stacks/123456789/something/very/deep.yaml")
         assert(number == "123456789")
+      }
+    }
+
+    'regionIdParser - {
+      'parseUsEast2 - {
+        val name = EventProcessor.regionIdParser("stacks/12456789/us-east-2/something/very/deep.yaml")
+        assert(name == "us-east-2")
+      }
+      'parseEuCentral1 - {
+        val name = EventProcessor.regionIdParser("stacks/12456789/eu-central-1/something/very/deep.yaml")
+        assert(name == "eu-central-1")
       }
     }
   }

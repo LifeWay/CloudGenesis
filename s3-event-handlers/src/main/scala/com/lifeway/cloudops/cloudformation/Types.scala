@@ -7,7 +7,7 @@ object Types {
   type IAMCapabilityEnabled       = Boolean
   type SemanticStackNamingEnabled = Boolean
   type AssumeRoleName             = String
-  type SNSArn                     = String
+  type SNSName                    = String
   type SNSErrorArn                = String
   type ChangeSetNamePrefix        = Option[String]
   type CFServiceRoleName          = Option[String]
