@@ -118,14 +118,19 @@ object EventProcessor {
           Bad(StackConfigError(s"Failed to retrieve or parse stack file for: ${s3File.key}. Details: ${e.getMessage}"))
       },
       stackConfig => {
-        s3FileExists(s3File.bucket, s"templates/${stackConfig.template}").flatMap(
-          exists =>
-            if (exists) Good(stackConfig)
-            else
-              Bad(
-                StackConfigError(
-                  s"Invalid template path: ${stackConfig.template} does not exist in the templates directory."))
-        )
+        s3File.eventType match {
+          //Validate template exists if CreateUpdateEvent
+          case CreateUpdateEvent =>
+            s3FileExists(s3File.bucket, s"templates/${stackConfig.template}").flatMap(
+              exists =>
+                if (exists) Good(stackConfig)
+                else
+                  Bad(
+                    StackConfigError(
+                      s"Invalid template path: ${stackConfig.template} does not exist in the templates directory."))
+            )
+          case DeletedEvent => Good(stackConfig)
+        }
       }
     )
 

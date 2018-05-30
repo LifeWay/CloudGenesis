@@ -245,6 +245,27 @@ object EventProcessorTests extends TestSuite {
         assert(updateExecutor == Bad(StackConfigError("The Delete Executor!")))
       }
 
+      'dontCallS3FileExistsOnDelete - {
+        val s3File =
+          S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", DeletedEvent)
+        val executors: Map[EventType, StackExecutor] = Map(DeletedEvent -> new StackExecutor {
+          override val execute: (AmazonCloudFormation, StackConfig, S3File) => Or[Unit, AutomationError] = (c, sc, f) =>
+            if (sc.stackName.equals("my-stack-name")) Good(())
+            else throw new IllegalArgumentException
+        })
+
+        val result =
+          EventProcessor.handleStack(
+            _ => Success(sampleStackYaml),
+            (_, _) => Good(false), //returns false which would fail the result if not DeletedEvent
+            _ => null,
+            null,
+            None,
+            false,
+            executors)(s3File)
+        assert(result == Good(()))
+      }
+
       'returnFailureIfS3ContentFails - {
         val s3File =
           S3File("some-bucket", "stacks/test.123/us-east-1/productx/stackz.yaml", "some-version-id", CreateUpdateEvent)
