@@ -21,7 +21,7 @@ exports.handler = (event, context, callback) => {
       slack.webhook(
         {
           channel: channel,
-          username: 'CloudFormation-GitOps',
+          username: 'GitFormation',
           icon_emoji: ':cloud:',
           text: `*${projectName}* (${jobId}) is ${codebuild.detail[
             "build-status"

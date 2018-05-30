@@ -1,7 +1,7 @@
 #
 # First Setup Stack / Master Automation ( creates any kind of resource )
 #
-# Typically used for Stack Set template - this creates the role that the CF Automation will assume so that it can
+# Typically used for Stack Set template - this creates the role that GitFormation will assume so that it can
 # do the CloudFormation operations in that account.
 #
 # *** WARNING ****

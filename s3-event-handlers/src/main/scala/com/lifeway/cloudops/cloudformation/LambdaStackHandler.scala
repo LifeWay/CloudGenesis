@@ -28,7 +28,7 @@ class LambdaStackHandler {
   val snsExternalNotifyTopicArn: ExternalNotifySNSArn = sys.env.get("SNS_EXTERNAL_TOPIC_NOTIFY_ARN")
   val cfServiceRoleName: CFServiceRoleName            = sys.env.get("IAM_CF_SERVICE_ROLE_NAME")
   val changeSetNamePrefix: ChangeSetNamePrefix        = sys.env.get("CF_CHANGE_SET_NAME_PREFIX")
-  val trackingTagName: TrackingTagName                = sys.env.getOrElse("TRACKING_TAG_NAME", "CFGitOps:stack-file")
+  val trackingTagName: TrackingTagName                = sys.env.getOrElse("TRACKING_TAG_NAME", "GitFormation:stack-file")
   val trackingTagValuePrefix: TrackingTagValuePrefix  = sys.env.get("TRACKING_TAG_PREFIX")
   val system                                          = ActorSystem("SchedulerSystem")
   val snsErrorArn: SNSErrorArn = sys.env
@@ -52,7 +52,7 @@ class LambdaStackHandler {
   val handler = LambdaStackHandler.lambdaHandler(
     eventProcessorOr,
     LambdaStackHandler.eventHandler,
-    (input: String) => snsClient.publish(snsErrorArn, input, "CF GitOps: Error")) _
+    (input: String) => snsClient.publish(snsErrorArn, input, "GitFormation: Error")) _
 
   /**
     * Given an SNS Event that should be wrapping an S3File type (coming from demuxer), process it.

@@ -469,7 +469,7 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
@@ -523,7 +523,7 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&
@@ -563,7 +563,7 @@ object CreateStackExecutorTests extends TestSuite {
                 Option(req.getRoleARN).isEmpty &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From CF Automation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("some-sns-arn").asJava) &&

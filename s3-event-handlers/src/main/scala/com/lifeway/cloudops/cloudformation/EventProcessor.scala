@@ -175,7 +175,7 @@ object EventProcessor {
     val regionId              = regionIdParser(event.key)
     val assumeRoleArn: String = s"arn:aws:iam::$accountId:role/$assumeRoleName"
     val credentialsProvider: AWSCredentialsProvider =
-      new STSAssumeRoleSessionCredentialsProvider.Builder(assumeRoleArn, "CloudFormation-GitOps")
+      new STSAssumeRoleSessionCredentialsProvider.Builder(assumeRoleArn, "GitFormation")
         .withStsClient(stsClient)
         .build()
 

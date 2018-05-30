@@ -64,7 +64,6 @@ Metadata:
       GitHubToken:
         default: GitHub Personal Access Token
 
-
 Parameters:
   AllowIAMCapabilities:
     Description: "CloudFormation has an IAM safe guard built in. If this is false, no IAM resources can be created even if the policy arns allow it"
@@ -137,12 +136,12 @@ Resources:
   S3CreateUpdateEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF Automation: S3 CreateUpdate Events"
+      DisplayName: "GitFormation: S3 CreateUpdate Events"
 
   S3DeleteEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF Automation: S3 Delete Events"
+      DisplayName: "GitFormation: S3 Delete Events"
 
   S3EventsSNSPolicy:
     Type: AWS::SNS::TopicPolicy
@@ -232,7 +231,7 @@ Resources:
   BuildStatusTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF Automation: Pipeline Status"
+      DisplayName: "GitFormation: Pipeline Status"
       Subscription:
       - Endpoint:
           Fn::GetAtt:
@@ -243,12 +242,12 @@ Resources:
   S3FileEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF GitOps: S3 File Events (Demuxed)"
+      DisplayName: "GitFormation: S3 File Events (Demuxed)"
 
   DLQErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF Automation: Errors"
+      DisplayName: "GitFormation: Errors"
       Subscription:
       - Endpoint:
           Fn::GetAtt:
@@ -259,7 +258,7 @@ Resources:
   ErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF Automation: Errors"
+      DisplayName: "GitFormation: Errors"
       Subscription:
       - Endpoint:
           Fn::GetAtt:
@@ -270,7 +269,7 @@ Resources:
   SlackNotificationErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "CF Automation: Errors"
+      DisplayName: "GitFormation: Errors"
       Subscription:
         - Endpoint: !Ref EmailContact
           Protocol: "email-json"
