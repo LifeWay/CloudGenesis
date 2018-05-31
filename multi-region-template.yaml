@@ -19,6 +19,10 @@ Parameters:
     Description: "The region the GitFormation app is running in"
     Type: String
 
+  AccountIds:
+    Description: "The comma delimited list of account ID's that can this instance of GitFormation can automatically deploy to."
+    Type: CommaDelimitedList
+
 Resources:
   CloudFormationEventsTopic:
     Type: AWS::SNS::Topic
@@ -27,3 +31,19 @@ Resources:
       Subscription:
       - Endpoint: !Sub "arn:aws:lambda:${GitFormationPrimaryRegion}:${AWS::AccountId}:function:${GitFormationStackName}-CFEventsNotification"
         Protocol: lambda
+
+  CloudFormationEventsSNSPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref CloudFormationEventsTopic
+      PolicyDocument:
+        Id: S3TopicPolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: "PublishEvents"
+            Effect: Allow
+            Principal:
+              AWS: !Ref AccountIds
+            Action: sns:Publish
+            Resource: !Ref CloudFormationEventsTopic

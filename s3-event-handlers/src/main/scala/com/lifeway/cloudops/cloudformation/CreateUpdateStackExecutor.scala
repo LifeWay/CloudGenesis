@@ -43,6 +43,7 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
                                                 changeSetNamePrefix: ChangeSetNamePrefix,
                                                 trackingTagName: TrackingTagName,
                                                 trackingTagValuePrefix: TrackingTagValuePrefix,
+                                                accountId: AccountId,
                                                 val cfSNSEventsTopicName: SNSName)
     extends StackExecutor {
 
@@ -62,6 +63,7 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
         iam,
         cfServiceRoleName,
         changeSetNamePrefix,
+        accountId,
         cfSNSEventsTopicName
       )
   }
@@ -72,9 +74,18 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
   val ChangeSetNamePostfix = "cf-deployer-automation"
   val logger               = LoggerFactory.getLogger("com.lifeway.cloudops.cloudformation.CreateUpdateStackExecutor")
 
-  val snsARNBuilder: (S3File, SNSName) => String = (s3File, cfSNSEventsTopicName) => {
-    val regionId  = EventProcessor.regionIdParser(s3File.key)
-    val accountId = EventProcessor.accountNumberParser(s3File.key)
+  /**
+    * The Region MUST be the region the CF stack is operating in.
+    * The Account ID MUST be the account the DEPLOYER is operating in.
+    *
+    * Therefore: for every region you wish to deploy stacks into, regardless of which account, the account the
+    * deployer itself operates in must have an SNS topic in each region that the deployer wishes to use in the same
+    * account the deployer is in, or for other accounts the deployer deploys to.
+    *
+    * Cross account permissions for these topics are already generated.
+    */
+  val snsARNBuilder: (S3File, SNSName, AccountId) => String = (s3File, cfSNSEventsTopicName, accountId) => {
+    val regionId = EventProcessor.regionIdParser(s3File.key)
     s"arn:aws:sns:$regionId:$accountId:$cfSNSEventsTopicName"
   }
 
@@ -95,13 +106,14 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
       changeSetNameBuild: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
       changeSetType: (AmazonCloudFormation, StackConfig) => ChangeSetType Or AutomationError = determineChangeSetType,
       buildParams: StackConfig => Seq[AWSParam] Or AutomationError = s => buildParameters()(s),
-      snsARNBuild: (S3File, SNSName) => String = snsARNBuilder)(
+      snsARNBuild: (S3File, SNSName, AccountId) => String = snsARNBuilder)(
       changeSetReady: (AmazonCloudFormation, ChangeSetId, StackName, Status, Seq[Status]) => Unit Or AutomationError,
       deleteRollbackStackIfExists: (AmazonCloudFormation, StackName) => Unit Or AutomationError,
       trackingTag: (S3File) => AWSTag,
       iam: IAMCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
       changeSetNamePrefix: ChangeSetNamePrefix,
+      accountId: AccountId,
       cfSNSEventsTopicName: SNSName)(cfClient: AmazonCloudFormation,
                                      config: StackConfig,
                                      s3File: S3File): Unit Or AutomationError = {
@@ -126,7 +138,7 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
           .withChangeSetType(changeSetType)
           .withDescription(s"From GitFormation File: ${s3File.key}")
           .withTemplateURL(s"https://s3.amazonaws.com/${s3File.bucket}/templates/${config.template}")
-          .withNotificationARNs(snsARNBuild(s3File, cfSNSEventsTopicName))
+          .withNotificationARNs(snsARNBuild(s3File, cfSNSEventsTopicName, accountId))
           .withStackName(config.stackName)
           .withParameters(params: _*)
           .withTags(tags: _*)

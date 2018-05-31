@@ -8,6 +8,7 @@ object Types {
   type SemanticStackNamingEnabled = Boolean
   type AssumeRoleName             = String
   type SNSName                    = String
+  type AccountId                  = String
   type SNSErrorArn                = String
   type ChangeSetNamePrefix        = Option[String]
   type CFServiceRoleName          = Option[String]

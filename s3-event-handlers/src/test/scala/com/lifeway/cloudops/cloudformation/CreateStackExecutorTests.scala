@@ -64,8 +64,8 @@ object CreateStackExecutorTests extends TestSuite {
                  "stacks/my-account-name.123456789/us-west-2/my/stack/path.yaml",
                  "some-version-id",
                  CreateUpdateEvent)
-        val result = CreateUpdateStackExecutor.snsARNBuilder(testFile, "some-topic-name")
-        assert(result == "arn:aws:sns:us-west-2:123456789:some-topic-name")
+        val result = CreateUpdateStackExecutor.snsARNBuilder(testFile, "some-topic-name", "987654321")
+        assert(result == "arn:aws:sns:us-west-2:987654321:some-topic-name")
       }
     }
 
@@ -484,7 +484,7 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
-                req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&
+                req.getNotificationARNs.equals(Seq("built-some-sns-arn-123456789").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.equals(parameters.asJava) &&
                 req.getTags.containsAll(tags.asJava) &&
@@ -503,13 +503,14 @@ object CreateStackExecutorTests extends TestSuite {
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
-          snsARNBuild = (_, s) => s"built-$s"
+          snsARNBuild = (_, s, a) => s"built-$s-$a"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-name"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
@@ -558,13 +559,14 @@ object CreateStackExecutorTests extends TestSuite {
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
-          snsARNBuild = (_, s) => s"built-$s"
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-name"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
@@ -599,10 +601,15 @@ object CreateStackExecutorTests extends TestSuite {
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
-          snsARNBuild = (_, s) => s"built-$s"
-        )((_, _, _, _, _) => Good(()), (_, _) => Good(()), _ => autoTag, false, None, None, "some-sns-arn")(cfClient,
-                                                                                                            stackConfig,
-                                                                                                            s3File)
+          snsARNBuild = (_, s, _) => s"built-$s"
+        )((_, _, _, _, _) => Good(()),
+          (_, _) => Good(()),
+          _ => autoTag,
+          false,
+          None,
+          None,
+          "123456789",
+          "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result.isGood)
       }
@@ -621,13 +628,15 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Bad(StackError("boom")),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-arn"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
@@ -647,13 +656,15 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-arn"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("delete go boom")))
@@ -673,13 +684,15 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Bad(StackError("boom")),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-arn"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("boom")))
@@ -699,13 +712,15 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Bad(StackError("Failed to delete existing rollback-stack")),
           _ => autoTag,
           false,
           None,
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("Failed to delete existing rollback-stack")))
@@ -725,13 +740,15 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-arn"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError(
@@ -753,13 +770,15 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Bad(StackError("params boom"))
+          buildParams = (_) => Bad(StackError("params boom")),
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-arn"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(StackError("params boom")))
@@ -782,13 +801,15 @@ object CreateStackExecutorTests extends TestSuite {
           capabilities = _ => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
-          buildParams = (_) => Good(parameters)
+          buildParams = (_) => Good(parameters),
+          snsARNBuild = (_, s, _) => s"built-$s"
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
           false,
           Some("some-role-arn"),
           None,
+          "123456789",
           "some-sns-arn")(cfClient, stackConfig, s3File)
 
         assert(result == Bad(ServiceError(

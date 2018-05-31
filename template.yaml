@@ -5,7 +5,7 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: "CloudFormation-GitOps: Automated CloudFormation Management from Git Source"
+Description: "GitFormation: Automated CloudFormation Management from Git Source"
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -91,7 +91,7 @@ Parameters:
       - "true"
       - "false"
   AccountIds:
-    Description: "The comma delimited list of account ID's that can this deployer can automatically deployed to."
+    Description: "The comma delimited list of account ID's that can this instance of GitFormation can automatically deploy to."
     Type: CommaDelimitedList
   ExternalNotificationSNSArn:
     Description: "(Optional): The SNS arn to publish events to that contain a record of the change that is occurring by the automation. Leave empty if not used."
@@ -485,6 +485,7 @@ Resources:
       Environment:
         Variables:
           CF_EVENTS_TOPIC_NAME: !Sub "${AWS::StackName}-CloudFormationEventsTopic"
+          GITFORMATION_ACCOUNT_ID: !Sub "${AWS::AccountId}"
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
           IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName
