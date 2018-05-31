@@ -48,9 +48,10 @@ object LambdaStackHandlerTests extends TestSuite {
     'loadEventProcessor - {
       'successfullyLoadEventProcessor - {
         var envFetch: (String) => Option[String] = {
-          case "IAM_ASSUME_ROLE_NAME" => Some("IAM_ROLE_NAME")
-          case "CF_EVENTS_TOPIC_NAME" => Some("SNS_ARN_FOR_CF_EVENTS")
-          case _                      => throw new IllegalArgumentException
+          case "IAM_ASSUME_ROLE_NAME"    => Some("IAM_ROLE_NAME")
+          case "CF_EVENTS_TOPIC_NAME"    => Some("SNS_ARN_FOR_CF_EVENTS")
+          case "GITFORMATION_ACCOUNT_ID" => Some("123456789")
+          case _                         => throw new IllegalArgumentException
         }
 
         val processor = LambdaStackHandler.loadEventProcessor(envFetch)(null,
@@ -69,9 +70,10 @@ object LambdaStackHandlerTests extends TestSuite {
 
       'returnErrorIfMissingOneOfRoleVars - {
         var envFetch: (String) => Option[String] = {
-          case "IAM_ASSUME_ROLE_NAME" => None
-          case "CF_EVENTS_TOPIC_NAME" => Some("SNS_ARN_FOR_CF_EVENTS")
-          case _                      => throw new IllegalArgumentException
+          case "IAM_ASSUME_ROLE_NAME"    => None
+          case "CF_EVENTS_TOPIC_NAME"    => Some("SNS_ARN_FOR_CF_EVENTS")
+          case "GITFORMATION_ACCOUNT_ID" => Some("123456789")
+          case _                         => throw new IllegalArgumentException
         }
 
         val processor = LambdaStackHandler.loadEventProcessor(envFetch)(null,
@@ -86,7 +88,9 @@ object LambdaStackHandlerTests extends TestSuite {
                                                                         null,
                                                                         null)
 
-        val expected = Bad(LambdaConfigError("IAM_ASSUME_ROLE_NAME or CF_EVENTS_TOPIC_ARN env variables were not set."))
+        val expected = Bad(
+          LambdaConfigError(
+            "IAM_ASSUME_ROLE_NAME, CF_EVENTS_TOPIC_ARN, GITFORMATION_ACCOUNT_ID env variables were not set."))
         assert(processor == expected)
       }
     }
