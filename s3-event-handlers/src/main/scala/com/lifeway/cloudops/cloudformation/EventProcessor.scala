@@ -186,18 +186,24 @@ object EventProcessor {
     cfClientBuilder(credentialsProvider, regionId).build()
   }
 
+  /**
+    * This function acts as both a convience to give an error message ahead of a CF error, but also as a safety gaurd
+    * such that you can only deploy stacks from templates from approved buckets where the deployer must have access to
+    * check for the file existing
+    */
   def checkFileExists(s3Client: AmazonS3)(bucket: String, key: String): Boolean Or AutomationError =
     try {
       Good(s3Client.doesObjectExist(bucket, key))
     } catch {
       case e: AmazonServiceException if e.getStatusCode >= 500 =>
         logger.error(s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key", e)
-        Bad(
-          ServiceError(
-            s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key. Reason: ${e.getMessage}"))
+        Bad(ServiceError(
+          s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key in the $bucket S3 Bucket. Reason: ${e.getMessage}"))
       case e: Throwable =>
         logger.error(s"Failed to check for existence of s3 file: $key.", e)
-        Bad(StackError(s"Failed to check for existence of s3 file: $key. Reason: ${e.getMessage}"))
+        Bad(
+          StackError(
+            s"Failed to check for existence of s3 file: $key in the $bucket S3 Bucket. Reason: ${e.getMessage}"))
     }
 
   /**

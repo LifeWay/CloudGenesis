@@ -159,7 +159,7 @@ object EventProcessorTests extends TestSuite {
         val result = EventProcessor.checkFileExists(s3Client)("abc", "thing/x.yaml")
         assert(result.isBad)
         assert(result.swap.get == ServiceError(
-          "AWS 500 Service Exception: Failed to check for existence of s3 file: thing/x.yaml. Reason: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)"))
+          "AWS 500 Service Exception: Failed to check for existence of s3 file: thing/x.yaml in the abc S3 Bucket. Reason: boom (Service: null; Status Code: 500; Error Code: null; Request ID: null)"))
       }
 
       'returnStackErrorForOtherAWSErrors - {
@@ -169,7 +169,9 @@ object EventProcessorTests extends TestSuite {
 
         val result = EventProcessor.checkFileExists(s3Client)("abc", "thing/x.yaml")
         assert(result.isBad)
-        assert(result.swap.get == StackError("Failed to check for existence of s3 file: thing/x.yaml. Reason: boom"))
+        assert(
+          result.swap.get == StackError(
+            "Failed to check for existence of s3 file: thing/x.yaml in the abc S3 Bucket. Reason: boom"))
       }
     }
 
