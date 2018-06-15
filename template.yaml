@@ -36,7 +36,7 @@ Metadata:
           - StackChangeSetPrefix
           - ExternalNotificationSNSArn
           - TrackingTagPrefix
-          - ExternalS3Buckets
+          - ExternalS3BucketPathArns
     ParameterLabels:
       AccountIds:
         default: AWS Account ID's
@@ -64,8 +64,8 @@ Metadata:
         default: GitHub Repository Owner
       GitHubToken:
         default: GitHub Personal Access Token
-      ExternalS3Buckets:
-        default: Additional S3 Buckets for Templates (arns)
+      ExternalS3BucketPathArns:
+        default: Additional S3 Bucket ARN Paths for Templates:
 
 Parameters:
   AllowIAMCapabilities:
@@ -116,8 +116,8 @@ Parameters:
     Type: String
     Description: "(Optional): Every stack launched has a tag automatically added to the stack so you what stack file the stack was created from. Use this prefix to prepend to that path other useful information such as what repo the stack came from or what deployer it came from.  If you use multiple deployers and git repos, this is recommended to use this to identify which one."
     Default: ""
-  ExternalS3Buckets:
-    Description: "(Optional): A comma delimited list of S3 ARNs to external buckets that can be used by stack templates. must be in this form: arn:aws:s3:::BUCKET_NAME/*"
+  ExternalS3BucketPathArns:
+    Description: "(Optional): A comma delimited list of S3 Bucket PATH ARNs to external buckets that can be used by stack templates. must be in this form: arn:aws:s3:::BUCKET_NAME/[optional-sub-path]*"
     Type: CommaDelimitedList
     Default: ""
 
@@ -138,7 +138,7 @@ Conditions:
   HasCFServiceRole: !Not [!Equals [!Ref CFServiceRoleName, ""]]
   HasStackChageSetPrefix: !Not [!Equals [!Ref StackChangeSetPrefix, ""]]
   HasTrackingTagPrefix: !Not [!Equals [!Ref TrackingTagPrefix, ""]]
-  HasExternalS3BucketSupport: !Not [!Equals [!Join ["", !Ref ExternalS3Buckets], ""]]
+  HasExternalS3BucketSupport: !Not [!Equals [!Join ["", !Ref ExternalS3BucketPathArns], ""]]
 
 Resources:
   S3CreateUpdateEventsTopic:
@@ -444,7 +444,7 @@ Resources:
                   Action:
                     - s3:GetObject
                     - s3:GetObjectVersion
-                  Resource: !Ref ExternalS3Buckets
+                  Resource: !Ref ExternalS3BucketPathArns
                 - !Ref "AWS::NoValue"
 
         - PolicyName: "ssm-access"

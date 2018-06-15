@@ -33,13 +33,13 @@ Parameters:
     Description: "The name you will launch the CloudFormation Automation stack as"
     Type: String
 
-  ExternalS3Buckets:
-    Description: "(Optional): A comma delimited list of S3 ARNs to external buckets that can be used by stack templates. must be in this form: arn:aws:s3:::BUCKET_NAME/*"
+  ExternalS3BucketPathArns:
+    Description: "(Optional): A comma delimited list of S3 Bucket PATH ARNs to external buckets that can be used by stack templates. must be in this form: arn:aws:s3:::BUCKET_NAME/[optional-sub-path]*"
     Type: CommaDelimitedList
     Default: ""
 
 Conditions:
-  HasExternalS3BucketSupport: !Not [!Equals [!Join ["", !Ref ExternalS3Buckets], ""]]
+  HasExternalS3BucketSupport: !Not [!Equals [!Join ["", !Ref ExternalS3BucketPathArns], ""]]
 
 Resources:
   CFAutomationRole:
@@ -79,9 +79,9 @@ Resources:
                 - Effect: Allow
                   Action:
                     - s3:GetObject
-                  Resource: !Ref ExternalS3Buckets
+                  Resource: !Ref ExternalS3BucketPathArns
                 - !Ref "AWS::NoValue"
-                
+
         - PolicyName: "PassRoleToCF"
           PolicyDocument:
             Statement:
