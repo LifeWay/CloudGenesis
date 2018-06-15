@@ -306,9 +306,8 @@ object EventProcessorTests extends TestSuite {
                                      false,
                                      executors)(s3File)
         assert(result.isBad)
-        assert(
-          result.swap.get == StackConfigError(
-            "Invalid template path: demo/demo-role.yaml does not exist in the templates directory."))
+        assert(result.swap.get == StackConfigError(
+          "Invalid template path: 'demo/demo-role.yaml' does not exist in the 'templates/' directory of the 'some-bucket' S3 bucket"))
       }
 
       'returnFailureIfAWSIsDown - {

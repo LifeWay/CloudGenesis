@@ -37,6 +37,8 @@ object CreateStackExecutorTests extends TestSuite {
   val stackConfig = StackConfig(
     "demo-stack",
     "demo/template.yaml",
+    "gitformation-demo-bucket",
+    "templates/",
     Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
     Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true")))
   )
@@ -475,6 +477,8 @@ object CreateStackExecutorTests extends TestSuite {
       val autoTag = new AWSTag().withKey("auto-tag-key").withValue("auto-tag-value")
 
       'returnGoodWhenSuccessfulWithServiceRole - {
+        val customConfig = stackConfig.copy(templateBucket = "alt-demo-bucket", templatePrefix = "some-crazy-prefix/")
+
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
             if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
@@ -483,9 +487,9 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
                 req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
-                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+                  s"https://s3.amazonaws.com/${customConfig.templateBucket}/${customConfig.templatePrefix}${customConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("built-some-sns-arn-123456789").asJava) &&
-                req.getStackName.equals(stackConfig.stackName) &&
+                req.getStackName.equals(customConfig.stackName) &&
                 req.getParameters.equals(parameters.asJava) &&
                 req.getTags.containsAll(tags.asJava) &&
                 req.getTags.contains(autoTag))
@@ -511,7 +515,7 @@ object CreateStackExecutorTests extends TestSuite {
           Some("some-role-name"),
           None,
           "123456789",
-          "some-sns-arn")(cfClient, stackConfig, s3File)
+          "some-sns-arn")(cfClient, customConfig, s3File)
 
         assert(result.isGood)
       }
@@ -520,6 +524,8 @@ object CreateStackExecutorTests extends TestSuite {
         val stackConfig = StackConfig(
           "demo-stack",
           "demo/template.yaml",
+          "gitformation-demo-bucket",
+          "templates/",
           Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
           Some(
             Seq(Parameter("myParam", "myValue"),
@@ -539,7 +545,7 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
                 req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
-                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+                  s"https://s3.amazonaws.com/${stackConfig.templateBucket}/${stackConfig.templatePrefix}${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.size.equals(parameters.size) &&
@@ -581,7 +587,7 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
                 req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
-                  s"https://s3.amazonaws.com/${s3File.bucket}/templates/${stackConfig.template}") &&
+                  s"https://s3.amazonaws.com/${stackConfig.templateBucket}/${stackConfig.templatePrefix}${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&
                 req.getStackName.equals(stackConfig.stackName) &&
                 req.getParameters.equals(parameters.asJava) &&

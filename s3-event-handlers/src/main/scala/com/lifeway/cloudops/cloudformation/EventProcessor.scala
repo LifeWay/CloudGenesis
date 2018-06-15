@@ -106,7 +106,7 @@ object EventProcessor {
     val stackConfig: StackConfig Or AutomationError = (for {
       contentString <- s3ContentString(s3File)
       yamlJson      <- parser.parse(contentString).toTry
-      config        <- yamlJson.as[StackConfig](StackConfig.decoder(s3File.key)).toTry
+      config        <- yamlJson.as[StackConfig](StackConfig.decoder(s3File)).toTry
     } yield {
       if (semanticStackNaming) config.copy(stackName = StackConfig.semanticStackName(s3File.key)) else config
     }).fold(
@@ -121,14 +121,13 @@ object EventProcessor {
         s3File.eventType match {
           //Validate template exists if CreateUpdateEvent
           case CreateUpdateEvent =>
-            s3FileExists(s3File.bucket, s"templates/${stackConfig.template}").flatMap(
+            s3FileExists(stackConfig.templateBucket, stackConfig.templatePrefix + stackConfig.template).flatMap(
               exists =>
                 if (exists) Good(stackConfig)
                 else
-                  Bad(
-                    StackConfigError(
-                      s"Invalid template path: ${stackConfig.template} does not exist in the templates directory."))
-            )
+                  Bad(StackConfigError(
+                    s"Invalid template path: '${stackConfig.template}' does not exist in the '${stackConfig.templatePrefix}'" +
+                      s" directory of the '${stackConfig.templateBucket}' S3 bucket")))
           case DeletedEvent => Good(stackConfig)
         }
       }

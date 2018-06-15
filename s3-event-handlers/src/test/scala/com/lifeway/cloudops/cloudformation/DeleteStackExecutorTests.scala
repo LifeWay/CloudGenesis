@@ -7,8 +7,9 @@ import utest._
 
 object DeleteStackExecutorTests extends TestSuite {
   val tests = Tests {
-    val stackConfig = StackConfig("test-stack", "demo/test-template.yaml", None, None)
-    val s3File      = S3File("some-bucket", "test-stack.yaml", "some-version-id", DeletedEvent)
+    val stackConfig =
+      StackConfig("test-stack", "demo/test-template.yaml", "gitformation-demo-bucket", "templates/", None, None)
+    val s3File = S3File("some-bucket", "test-stack.yaml", "some-version-id", DeletedEvent)
 
     'goodIfSuccessful - {
       val cfClient = new CloudFormationTestClient {
