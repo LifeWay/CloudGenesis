@@ -5,6 +5,13 @@ import utest._
 
 object StackConfigTests extends TestSuite {
   val tests = Tests {
+
+    val s3File =
+      S3File("gitformation-demo-bucket",
+             "stacks/my-account-name.123456789/us-east-1/my/stack/path.yaml",
+             "some-version-id",
+             CreateUpdateEvent)
+
     'tagDecoder - {
       'workWithStrings - {
         val yaml =
@@ -107,11 +114,13 @@ object StackConfigTests extends TestSuite {
             |   Value: dev
           """.stripMargin.trim
         val decoded: StackConfig =
-          parser.parse(yaml).map(_.as[StackConfig](StackConfig.decoder("some/file/key.yaml"))).toTry.get.toTry.get
+          parser.parse(yaml).map(_.as[StackConfig](StackConfig.decoder(s3File))).toTry.get.toTry.get
 
         val expected = StackConfig(
           "my-stack-name",
           "demo/demo-role.yaml",
+          "gitformation-demo-bucket",
+          "templates/",
           Some(Seq(Tag("Thing", "appA"), Tag("Owner", "ProductOwner"), Tag("Environment", "dev"))),
           Some(Seq(Parameter("Environment", "dev")))
         )
@@ -138,7 +147,8 @@ object StackConfigTests extends TestSuite {
         val decoded: StackConfig =
           parser
             .parse(yaml)
-            .map(_.as[StackConfig](StackConfig.decoder("stacks/acct.123456789/us-west-2/some/random/stack.yaml")))
+            .map(_.as[StackConfig](
+              StackConfig.decoder(s3File.copy(key = "stacks/acct.123456789/us-west-2/some/random/stack.yaml"))))
             .toTry
             .get
             .toTry
@@ -147,6 +157,87 @@ object StackConfigTests extends TestSuite {
         val expected = StackConfig(
           "some-random-stack",
           "demo/demo-role.yaml",
+          "gitformation-demo-bucket",
+          "templates/",
+          Some(Seq(Tag("Thing", "appA"), Tag("Owner", "ProductOwner"), Tag("Environment", "dev"))),
+          Some(Seq(Parameter("Environment", "dev")))
+        )
+
+        assert(decoded == expected)
+      }
+
+      'useProvidedBucket - {
+        val yaml =
+          """
+            |Template: demo/demo-role.yaml
+            |TemplateBucket: other-bucket
+            |Tags:
+            | - Key: Thing
+            |   Value: appA
+            | - Key: Owner
+            |   Value: ProductOwner
+            | - Key: Environment
+            |   Value: dev
+            |Parameters:
+            | - Name: Environment
+            |   Value: dev
+          """.stripMargin.trim
+
+        val decoded: StackConfig =
+          parser
+            .parse(yaml)
+            .map(_.as[StackConfig](
+              StackConfig.decoder(s3File.copy(key = "stacks/acct.123456789/us-west-2/some/random/stack.yaml"))))
+            .toTry
+            .get
+            .toTry
+            .get
+
+        val expected = StackConfig(
+          "some-random-stack",
+          "demo/demo-role.yaml",
+          "other-bucket",
+          "templates/",
+          Some(Seq(Tag("Thing", "appA"), Tag("Owner", "ProductOwner"), Tag("Environment", "dev"))),
+          Some(Seq(Parameter("Environment", "dev")))
+        )
+
+        assert(decoded == expected)
+      }
+
+      'useDifferentTemplatesPath - {
+        val yaml =
+          """
+            |Template: demo/demo-role.yaml
+            |TemplateBucket: other-bucket
+            |TemplatePrefix: serverless/something-else/
+            |Tags:
+            | - Key: Thing
+            |   Value: appA
+            | - Key: Owner
+            |   Value: ProductOwner
+            | - Key: Environment
+            |   Value: dev
+            |Parameters:
+            | - Name: Environment
+            |   Value: dev
+          """.stripMargin.trim
+
+        val decoded: StackConfig =
+          parser
+            .parse(yaml)
+            .map(_.as[StackConfig](
+              StackConfig.decoder(s3File.copy(key = "stacks/acct.123456789/us-west-2/some/random/stack.yaml"))))
+            .toTry
+            .get
+            .toTry
+            .get
+
+        val expected = StackConfig(
+          "some-random-stack",
+          "demo/demo-role.yaml",
+          "other-bucket",
+          "serverless/something-else/",
           Some(Seq(Tag("Thing", "appA"), Tag("Owner", "ProductOwner"), Tag("Environment", "dev"))),
           Some(Seq(Parameter("Environment", "dev")))
         )
