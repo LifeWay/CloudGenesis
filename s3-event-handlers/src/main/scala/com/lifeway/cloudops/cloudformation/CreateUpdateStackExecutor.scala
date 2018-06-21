@@ -137,7 +137,8 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
           .withChangeSetName(changeSetName)
           .withChangeSetType(changeSetType)
           .withDescription(s"From GitFormation File: ${s3File.key}")
-          .withTemplateURL(s"https://s3.amazonaws.com/${s3File.bucket}/templates/${config.template}")
+          .withTemplateURL(
+            s"https://s3.amazonaws.com/${config.templateBucket}/${config.templatePrefix}${config.template}")
           .withNotificationARNs(snsARNBuild(s3File, cfSNSEventsTopicName, accountId))
           .withStackName(config.stackName)
           .withParameters(params: _*)

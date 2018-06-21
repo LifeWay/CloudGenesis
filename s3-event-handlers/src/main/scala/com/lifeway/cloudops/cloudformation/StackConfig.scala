@@ -17,7 +17,12 @@ object Parameter {
                                                                   Decoder.decodeOption[String])
 }
 
-case class StackConfig(stackName: String, template: String, tags: Option[Seq[Tag]], parameters: Option[Seq[Parameter]])
+case class StackConfig(stackName: String,
+                       template: String,
+                       templateBucket: String,
+                       templatePrefix: String,
+                       tags: Option[Seq[Tag]],
+                       parameters: Option[Seq[Parameter]])
 
 object StackConfig {
   val yamlStringDecoder: Decoder[String] = Decoder[String] { c =>
@@ -35,15 +40,19 @@ object StackConfig {
 
   val semanticStackName = (key: String) => key.split("/", 4).last.replace("/", "-").split("""\.""").head
 
-  def decoder(fileKey: String): Decoder[StackConfig] = Decoder[StackConfig] { c =>
+  def decoder(s3File: S3File): Decoder[StackConfig] = Decoder[StackConfig] { c =>
     for {
-      stackNameOpt <- c.downField("StackName").as[Option[String]]
-      template     <- c.downField("Template").as[String]
-      tags         <- c.downField("Tags").as[Option[Seq[Tag]]]
-      parameters   <- c.downField("Parameters").as[Option[Seq[Parameter]]]
+      stackNameOpt      <- c.downField("StackName").as[Option[String]]
+      template          <- c.downField("Template").as[String]
+      templateBucketOpt <- c.downField("TemplateBucket").as[Option[String]]
+      templatePrefixOpt <- c.downField("TemplatePrefix").as[Option[String]]
+      tags              <- c.downField("Tags").as[Option[Seq[Tag]]]
+      parameters        <- c.downField("Parameters").as[Option[Seq[Parameter]]]
     } yield {
-      val stackName = stackNameOpt.getOrElse(semanticStackName(fileKey))
-      StackConfig(stackName, template, tags, parameters)
+      val stackName      = stackNameOpt.getOrElse(semanticStackName(s3File.key))
+      val templateBucket = templateBucketOpt.getOrElse(s3File.bucket)
+      val templatePrefix = templatePrefixOpt.getOrElse("templates/")
+      StackConfig(stackName, template, templateBucket, templatePrefix, tags, parameters)
     }
   }
 }

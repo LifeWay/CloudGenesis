@@ -106,7 +106,7 @@ object EventProcessor {
     val stackConfig: StackConfig Or AutomationError = (for {
       contentString <- s3ContentString(s3File)
       yamlJson      <- parser.parse(contentString).toTry
-      config        <- yamlJson.as[StackConfig](StackConfig.decoder(s3File.key)).toTry
+      config        <- yamlJson.as[StackConfig](StackConfig.decoder(s3File)).toTry
     } yield {
       if (semanticStackNaming) config.copy(stackName = StackConfig.semanticStackName(s3File.key)) else config
     }).fold(
@@ -121,14 +121,13 @@ object EventProcessor {
         s3File.eventType match {
           //Validate template exists if CreateUpdateEvent
           case CreateUpdateEvent =>
-            s3FileExists(s3File.bucket, s"templates/${stackConfig.template}").flatMap(
+            s3FileExists(stackConfig.templateBucket, stackConfig.templatePrefix + stackConfig.template).flatMap(
               exists =>
                 if (exists) Good(stackConfig)
                 else
-                  Bad(
-                    StackConfigError(
-                      s"Invalid template path: ${stackConfig.template} does not exist in the templates directory."))
-            )
+                  Bad(StackConfigError(
+                    s"Invalid template path: '${stackConfig.template}' does not exist in the '${stackConfig.templatePrefix}'" +
+                      s" directory of the '${stackConfig.templateBucket}' S3 bucket")))
           case DeletedEvent => Good(stackConfig)
         }
       }
@@ -187,18 +186,24 @@ object EventProcessor {
     cfClientBuilder(credentialsProvider, regionId).build()
   }
 
+  /**
+    * This function acts as both a convience to give an error message ahead of a CF error, but also as a safety gaurd
+    * such that you can only deploy stacks from templates from approved buckets where the deployer must have access to
+    * check for the file existing
+    */
   def checkFileExists(s3Client: AmazonS3)(bucket: String, key: String): Boolean Or AutomationError =
     try {
       Good(s3Client.doesObjectExist(bucket, key))
     } catch {
       case e: AmazonServiceException if e.getStatusCode >= 500 =>
         logger.error(s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key", e)
-        Bad(
-          ServiceError(
-            s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key. Reason: ${e.getMessage}"))
+        Bad(ServiceError(
+          s"AWS 500 Service Exception: Failed to check for existence of s3 file: $key in the $bucket S3 Bucket. Reason: ${e.getMessage}"))
       case e: Throwable =>
         logger.error(s"Failed to check for existence of s3 file: $key.", e)
-        Bad(StackError(s"Failed to check for existence of s3 file: $key. Reason: ${e.getMessage}"))
+        Bad(
+          StackError(
+            s"Failed to check for existence of s3 file: $key in the $bucket S3 Bucket. Reason: ${e.getMessage}"))
     }
 
   /**

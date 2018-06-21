@@ -33,6 +33,14 @@ Parameters:
     Description: "The name you will launch the CloudFormation Automation stack as"
     Type: String
 
+  ExternalS3BucketPathArns:
+    Description: "(Optional): A comma delimited list of S3 Bucket PATH ARNs to external buckets that can be used by stack templates. must be in this form: arn:aws:s3:::BUCKET_NAME/[optional-sub-path]*"
+    Type: CommaDelimitedList
+    Default: ""
+
+Conditions:
+  HasExternalS3BucketSupport: !Not [!Equals [!Join ["", !Ref ExternalS3BucketPathArns], ""]]
+
 Resources:
   CFAutomationRole:
     Type: AWS::IAM::Role
@@ -64,6 +72,16 @@ Resources:
                   - "s3:GetObject"
                 Resource:
                   - !Sub "arn:aws:s3:::${AutomationStackName}-cfstack-bucket/*"
+
+              #Rules for each bucket that a GitFormation Deployer is also allowed to deploy templates from.
+              - !If
+                - HasExternalS3BucketSupport
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: !Ref ExternalS3BucketPathArns
+                - !Ref "AWS::NoValue"
+
         - PolicyName: "PassRoleToCF"
           PolicyDocument:
             Statement:
