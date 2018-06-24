@@ -31,8 +31,12 @@ GitFormation Supports:
   running with different permission sets / different accounts so you know where a given stack came from.
  
 
+ # Architecture Diagram
+ ![](GitFormation-architecture.svg)
 
-## STEPS TO DEPLOY:
+
+
+# STEPS TO DEPLOY:
 
 **One Time Only**
 
