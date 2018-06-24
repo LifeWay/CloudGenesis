@@ -1,6 +1,6 @@
 #
 # This template creates the ECR Repo and perm needed for the Deployer's codebuild image.
-# You are still required to build the image and push it to the repo built by this stack!!
+# You are still required to build the image and push it to the repo built by this stack!
 #
 ---
 AWSTemplateFormatVersion: '2010-09-09'
@@ -52,5 +52,3 @@ Resources:
 Outputs:
   CFAutomationBuildImage:
     Value: !Ref CFAutomationBuildImage
-    Export:
-      Name: "CloudFormation-GitDeploy:ECRBuildImageName"
