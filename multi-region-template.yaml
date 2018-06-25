@@ -1,6 +1,6 @@
 #
 # If you wish to deploy to multiple regions from a single git repo (verses the alternative of running a git repo per
-# region with a GitFormation deployed for each of those repos, in their respective region) then you must deploy this
+# region with a CloudGenesis deployed for each of those repos, in their respective region) then you must deploy this
 # stack in each region.
 #
 # This stack will setup the SNS topic for CloudFormation events in each region that the CF events in that region will
@@ -9,27 +9,27 @@
 
 
 AWSTemplateFormatVersion: '2010-09-09'
-Description: "GitFormation: Multi-Region Support Stack"
+Description: "CloudGenesis: Multi-Region Support Stack"
 Parameters:
-  GitFormationStackName:
-    Description: "The name you gave the GitFormation stack"
+  CloudGenesisStackName:
+    Description: "The name you gave the CloudGenesis stack"
     Type: String
 
-  GitFormationPrimaryRegion:
-    Description: "The region the GitFormation app is running in"
+  CloudGenesisPrimaryRegion:
+    Description: "The region the CloudGenesis app is running in"
     Type: String
 
   AccountIds:
-    Description: "The comma delimited list of account ID's that can this instance of GitFormation can automatically deploy to."
+    Description: "The comma delimited list of account ID's that can this instance of CloudGenesis can automatically deploy to."
     Type: CommaDelimitedList
 
 Resources:
   CloudFormationEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: !Sub "${GitFormationStackName}-CloudFormationEventsTopic"
+      TopicName: !Sub "${CloudGenesisStackName}-CloudFormationEventsTopic"
       Subscription:
-      - Endpoint: !Sub "arn:aws:lambda:${GitFormationPrimaryRegion}:${AWS::AccountId}:function:${GitFormationStackName}-CFEventsNotification"
+      - Endpoint: !Sub "arn:aws:lambda:${CloudGenesisPrimaryRegion}:${AWS::AccountId}:function:${CloudGenesisStackName}-CFEventsNotification"
         Protocol: lambda
 
   CloudFormationEventsSNSPolicy:

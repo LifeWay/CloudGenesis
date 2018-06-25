@@ -50,7 +50,7 @@ object LambdaStackHandlerTests extends TestSuite {
         var envFetch: (String) => Option[String] = {
           case "IAM_ASSUME_ROLE_NAME"    => Some("IAM_ROLE_NAME")
           case "CF_EVENTS_TOPIC_NAME"    => Some("SNS_ARN_FOR_CF_EVENTS")
-          case "GITFORMATION_ACCOUNT_ID" => Some("123456789")
+          case "CLOUDGENESIS_ACCOUNT_ID" => Some("123456789")
           case _                         => throw new IllegalArgumentException
         }
 
@@ -72,7 +72,7 @@ object LambdaStackHandlerTests extends TestSuite {
         var envFetch: (String) => Option[String] = {
           case "IAM_ASSUME_ROLE_NAME"    => None
           case "CF_EVENTS_TOPIC_NAME"    => Some("SNS_ARN_FOR_CF_EVENTS")
-          case "GITFORMATION_ACCOUNT_ID" => Some("123456789")
+          case "CLOUDGENESIS_ACCOUNT_ID" => Some("123456789")
           case _                         => throw new IllegalArgumentException
         }
 
@@ -90,7 +90,7 @@ object LambdaStackHandlerTests extends TestSuite {
 
         val expected = Bad(
           LambdaConfigError(
-            "IAM_ASSUME_ROLE_NAME, CF_EVENTS_TOPIC_ARN, GITFORMATION_ACCOUNT_ID env variables were not set."))
+            "IAM_ASSUME_ROLE_NAME, CF_EVENTS_TOPIC_ARN, CLOUDGENESIS_ACCOUNT_ID env variables were not set."))
         assert(processor == expected)
       }
     }

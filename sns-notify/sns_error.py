@@ -10,7 +10,7 @@ def error_lambda_handler(event, context):
 def build_message(msg):
     return {
         'icon_emoji': ':cloud:',
-        'username': 'GitFormation',
+        'username': 'CloudGenesis',
         'channel': slack.CHANNEL,
         'attachments': [{
             'fallback': msg,

@@ -87,7 +87,7 @@ def get_stack_update_message(cf_message, channel):
     return {
         'icon_emoji': ':cloud:',
         'channel': channel,
-        'username': 'GitFormation',
+        'username': 'CloudGenesis',
         'attachments': [
             get_stack_update_attachment(cf_message)
         ]
