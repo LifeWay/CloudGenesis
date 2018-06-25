@@ -118,10 +118,8 @@ def get_stack_url(stack_id):
     region = get_stack_region(stack_id)
 
     query = {
-        'filter': 'active',
-        'tab': 'events',
         'stackId': stack_id
     }
 
-    return ('https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stacks?{query}'
+    return ('https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stack/detail?{query}'
             .format(region=region, query=urllib.urlencode(query)))

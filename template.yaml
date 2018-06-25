@@ -18,11 +18,12 @@ Metadata:
           - CFServiceRoleName
           - SSMPath
           - SemanticStackNaming
+          - ECRCodeBuildRepository
       - Label:
           default: Git Source
         Parameters:
-          - GithubRepoName
           - GithubRepoOwner
+          - GithubRepoName
           - GitHubToken
       - Label:
           default: Slack & Email Configuration
@@ -50,6 +51,8 @@ Metadata:
         default: Slack Web Hook URL
       EmailContact:
         default: Email Content (slack fallback)
+      ECRCodeBuildRepository:
+        default: ECR Repository Name for CodeBuild jobs
       StackChangeSetPrefix:
         default: Stack Change Set Prefix
       SemanticStackNaming:
@@ -65,7 +68,7 @@ Metadata:
       GitHubToken:
         default: GitHub Personal Access Token
       ExternalS3BucketPathArns:
-        default: Additional S3 Bucket ARN Paths for Templates:
+        default: Additional S3 Bucket ARN Paths for Templates
 
 Parameters:
   AllowIAMCapabilities:
@@ -120,8 +123,9 @@ Parameters:
     Description: "(Optional): A comma delimited list of S3 Bucket PATH ARNs to external buckets that can be used by stack templates. must be in this form: arn:aws:s3:::BUCKET_NAME/[optional-sub-path]*"
     Type: CommaDelimitedList
     Default: ""
-
-  # TODO: Add support for CodeCommit
+  ECRCodeBuildRepository:
+    Description: "The ECR repository name that holds the docker image used for the CodeBuild jobs ran on Git repo. ECR repo must be on the same account as GitFormation itself."
+    Type: String
   GithubRepoName:
     Description: The name of the repo (As seen on GitHub.com)
     Type: String
@@ -196,6 +200,8 @@ Resources:
                 Rules:
                   - Name: "prefix"
                     Value: "stacks/"
+                  - Name: "suffix"
+                    Value: ".yaml"
           - Event: "s3:ObjectCreated:Post"
             Topic: !Ref S3CreateUpdateEventsTopic
             Filter:
@@ -203,6 +209,8 @@ Resources:
                 Rules:
                   - Name: "prefix"
                     Value: "stacks/"
+                  - Name: "suffix"
+                    Value: ".yaml"
           - Event: "s3:ObjectCreated:CompleteMultipartUpload"
             Topic: !Ref S3CreateUpdateEventsTopic
             Filter:
@@ -210,13 +218,17 @@ Resources:
                 Rules:
                   - Name: "prefix"
                     Value: "stacks/"
+                  - Name: "suffix"
+                    Value: ".yaml"
           - Event: "s3:ObjectRemoved:DeleteMarkerCreated"
             Topic: !Ref S3DeleteEventsTopic
             Filter:
               S3Key:
-               Rules:
-                 - Name: "prefix"
-                   Value: "stacks/"
+                Rules:
+                  - Name: "prefix"
+                    Value: "stacks/"
+                  - Name: "suffix"
+                    Value: ".yaml"
 
   CloudFormationSyncBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -801,14 +813,14 @@ Resources:
         TargetArn: !Ref SlackNotificationErrorsTopic
         
   CodeBuildErrorInvokePermission:
-      Type: AWS::Lambda::Permission
-      Properties:
-        FunctionName:
-          Ref: CodeBuildStatusFunction
-        Action: lambda:InvokeFunction
-        Principal: sns.amazonaws.com
-        SourceArn:
-          Ref: BuildStatusTopic
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CodeBuildStatusFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn:
+        Ref: BuildStatusTopic
 
 
 
@@ -914,11 +926,7 @@ Resources:
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image:
-          !Sub
-            - "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/${RepoName}"
-            - RepoName:
-                Fn::ImportValue: "CloudFormation-GitDeploy:ECRBuildImageName"
+        Image: !Sub "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/${ECRCodeBuildRepository}"
         EnvironmentVariables:
           - Name: S3_BUCKET_NAME
             Value: !Ref CloudFormationSyncBucket
@@ -944,11 +952,7 @@ Resources:
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image:
-          !Sub
-            - "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/${RepoName}"
-            - RepoName:
-                Fn::ImportValue: "CloudFormation-GitDeploy:ECRBuildImageName"
+        Image: !Sub "${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/${ECRCodeBuildRepository}"
         EnvironmentVariables:
           - Name: S3_BUCKET_NAME
             Value: !Ref CloudFormationSyncBucket
