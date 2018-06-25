@@ -1,12 +1,12 @@
 
-# GitFormation: GitOps for CloudFormation
-GitFormation creates, updates, and deletes CloudFormation stacks as they exist in Git and tracks all notifications and 
+# CloudGenesis: GitOps for CloudFormation
+CloudGenesis creates, updates, and deletes CloudFormation stacks as they exist in Git and tracks all notifications and 
 status updates on Slack
 
-GitFormation operates as a Serverless Application launched via a single SAM stack (Some Roles necessary to launch 
+CloudGenesis operates as a Serverless Application launched via a single SAM stack (Some Roles necessary to launch 
 before launching stack).
 
-GitFormation Supports:
+CloudGenesis Supports:
 * GitHub Repositories (Both Public and Private)
 * Deploying stacks to multiple accounts and regions from a single Git Repo.
 * Clean separation from Templates and Stacks - allows Templates to be re-used, even across accounts.
@@ -15,25 +15,24 @@ GitFormation Supports:
   need to be able to launch the same common template.
 * All Notifications, errors, and status updates piped to a named Slack channel.
 * Support for Secret stack parameters via SSM.
-  * GitFormation will have read access to the value in SSM, and then passes that value to CloudFormation as a parameter 
+  * CloudGenesis will have read access to the value in SSM, and then passes that value to CloudFormation as a parameter 
   - you should only use this when your Template takes the parameter as a `NoEcho` type.
 * External SNS Notification Hook (Optional)
-  * Allows for external systems (e.g. Change Mgmt & Audit) to track events that GitFormation has initiated. 
+  * Allows for external systems (e.g. Change Mgmt & Audit) to track events that CloudGenesis has initiated. 
 * Flexible Security Model.
-  * GitFormation creates only very minimal IAM permissions for itself. For all executions against CloudFormation - it 
+  * CloudGenesis creates only very minimal IAM permissions for itself. For all executions against CloudFormation - it 
   assumes a role that you define.
-  * GitFormation can work with a single Assumed Role that has access to CloudFormation and can manage certain resource 
+  * CloudGenesis can work with a single Assumed Role that has access to CloudFormation and can manage certain resource 
   types OR it can work with an Assumed Role that can only work with CloudFormation and where that Role can pass a 
   Service Role to CloudFormation that only CloudFormation can assume. The choice is up to you!
 * Custom Tracking Tag
-  * All Stacks are automatically tagged with a GitFormation tracking Tag (`GitFormation:stack-file`). The value of the 
+  * All Stacks are automatically tagged with a CloudGenesis tracking Tag (`CloudGenesis:stack-file`). The value of the 
   tag is the path to the stack file. You can optionally add a tag value prefix if you have multiple git deployer's 
   running with different permission sets / different accounts so you know where a given stack came from.
  
 
  # Architecture Diagram
- ![](GitFormation-architecture.svg)
-
+ ![](CloudGenesis-architecture.svg)
 
 
 # STEPS TO DEPLOY:
@@ -43,7 +42,7 @@ GitFormation Supports:
 1.  On the master / governance account, deploy a new stack for the `template-ecr-buildimage.yaml` template.
 
 2.  Build the Docker Image that your GitOps repos themselves use (see [our GitOps repo]
-(https://github.com/Lifeway/GitFormation-StacksRepo) that you can use as your base) and push it to the ECR repo created 
+(https://github.com/Lifeway/CloudGenesis-StacksRepo) that you can use as your base) and push it to the ECR repo created 
 by the `template-ecr-buildimage.yaml` stack. e.g: `docker build -t git-deploy .` followed by the instructions provided 
 on ECR on how to do an ECR login and push an image.
 
@@ -60,7 +59,7 @@ on ECR on how to do an ECR login and push an image.
 NOTE - you can skip Step 5 if launching this more than once and have a "master" Deployer deploy the roles for 
 "secondary" deployers rather than using a Stack Set:
  
-5.  Deploy a StackSet for the master / admin GitFormation stack. Use the `cf-role-master.stackset.yaml` template.
+5.  Deploy a StackSet for the master / admin CloudGenesis stack. Use the `cf-role-master.stackset.yaml` template.
 
     StackSet:
     * `Name`: Pick a name that makes sense to you.
@@ -84,7 +83,7 @@ NOTE - you can skip Step 5 if launching this more than once and have a "master" 
     access to the S3 bucket created by the deployer stack. A classic CloudFormation chicken-and-egg problem where the 
     actual `ARN` doesn't exist yet, so a semantic naming scheme must be used so that the IAM access can be setup ahead 
     of the resource being created.
-    * `ExternalS3BucketPathArns`: This is optional. If you wish to allow this GitFormation deployer to deploy stacks
+    * `ExternalS3BucketPathArns`: This is optional. If you wish to allow this CloudGenesis deployer to deploy stacks
     where it is referencing external stack templates (not in the same GitOps repo as the stack), then you must specify
     the S3 Bucket path ARNS.
 
@@ -136,7 +135,7 @@ NOTE - you can skip Step 5 if launching this more than once and have a "master" 
     the email to subscribe to the data feed, else the messages won't be delievered.
     
     Optional Configuration:
-    * `StackChangeSetPrefix` - OPTIONAL: the naming prefix of the stackset created by GitFormation. This is useful if 
+    * `StackChangeSetPrefix` - OPTIONAL: the naming prefix of the stackset created by CloudGenesis. This is useful if 
     you desire to tightly restrict the deployer to only be able to manage stack sets created by that specific deployer 
     instance.
     * `ExternalNotificationSNSArn` - OPTIONAL: If provided, this is an ARN to an SNS topic where the deployer will 
@@ -149,8 +148,8 @@ NOTE - you can skip Step 5 if launching this more than once and have a "master" 
     * `ExternalS3BucketPathArns` - OPTIONAL: A comma delimited list of S3 Bucket PATH ARNs to external buckets that can 
     be used by stack templates. must be in this form: arn:aws:s3:::BUCKET_NAME/[optional-sub-path]*. This permission is
     in addition to the one given to the deployer role that executes CloudFormation calls on a given account as 
-    GitFormation itself reads your template prior to executing CloudFormation just to ensure the template path was
-    valid. This is important as GitFormation gives a descriptive slack error if you gave the wrong template path!
+    CloudGenesis itself reads your template prior to executing CloudFormation just to ensure the template path was
+    valid. This is important as CloudGenesis gives a descriptive slack error if you gave the wrong template path!
  
     
 # Access to GitHub
