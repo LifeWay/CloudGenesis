@@ -37,7 +37,7 @@ object CreateStackExecutorTests extends TestSuite {
   val stackConfig = StackConfig(
     "demo-stack",
     "demo/template.yaml",
-    "gitformation-demo-bucket",
+    "cloudgenesis-demo-bucket",
     "templates/",
     Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
     Some(Seq(Parameter("myParam", "myValue"), Parameter("myBoolParam", "true")))
@@ -485,7 +485,7 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From CloudGenesis File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${customConfig.templateBucket}/${customConfig.templatePrefix}${customConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("built-some-sns-arn-123456789").asJava) &&
@@ -524,7 +524,7 @@ object CreateStackExecutorTests extends TestSuite {
         val stackConfig = StackConfig(
           "demo-stack",
           "demo/template.yaml",
-          "gitformation-demo-bucket",
+          "cloudgenesis-demo-bucket",
           "templates/",
           Some(Seq(Tag("myTagKey", "myTagValue"), Tag("myTagKey2", "myTagValue2"))),
           Some(
@@ -543,7 +543,7 @@ object CreateStackExecutorTests extends TestSuite {
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From CloudGenesis File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${stackConfig.templateBucket}/${stackConfig.templatePrefix}${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&
@@ -585,7 +585,7 @@ object CreateStackExecutorTests extends TestSuite {
                 Option(req.getRoleARN).isEmpty &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
-                req.getDescription.equals(s"From GitFormation File: ${s3File.key}") &&
+                req.getDescription.equals(s"From CloudGenesis File: ${s3File.key}") &&
                 req.getTemplateURL.equals(
                   s"https://s3.amazonaws.com/${stackConfig.templateBucket}/${stackConfig.templatePrefix}${stackConfig.template}") &&
                 req.getNotificationARNs.equals(Seq("built-some-sns-arn").asJava) &&

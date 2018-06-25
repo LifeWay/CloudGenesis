@@ -1,7 +1,7 @@
 #
 # First Setup Stack / Master Automation ( creates any kind of resource )
 #
-# Typically used for Stack Set template - this creates the role that GitFormation will assume so that it can
+# Typically used for Stack Set template - this creates the role that CloudGenesis will assume so that it can
 # do the CloudFormation operations in that account.
 #
 # *** WARNING ****
@@ -73,7 +73,7 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:s3:::${AutomationStackName}-cfstack-bucket/*"
 
-              #Rules for each bucket that a GitFormation Deployer is also allowed to deploy templates from.
+              #Rules for each bucket that a CloudGenesis Deployer is also allowed to deploy templates from.
               - !If
                 - HasExternalS3BucketSupport
                 - Effect: Allow

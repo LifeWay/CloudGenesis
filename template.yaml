@@ -5,7 +5,7 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: "GitFormation: Automated CloudFormation Management from Git Source"
+Description: "CloudGenesis: Automated CloudFormation Management from Git Source"
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -97,7 +97,7 @@ Parameters:
       - "true"
       - "false"
   AccountIds:
-    Description: "The comma delimited list of account ID's that can this instance of GitFormation can automatically deploy to."
+    Description: "The comma delimited list of account ID's that can this instance of CloudGenesis can automatically deploy to."
     Type: CommaDelimitedList
   ExternalNotificationSNSArn:
     Description: "(Optional): The SNS arn to publish events to that contain a record of the change that is occurring by the automation. Leave empty if not used."
@@ -124,7 +124,7 @@ Parameters:
     Type: CommaDelimitedList
     Default: ""
   ECRCodeBuildRepository:
-    Description: "The ECR repository name that holds the docker image used for the CodeBuild jobs ran on Git repo. ECR repo must be on the same account as GitFormation itself."
+    Description: "The ECR repository name that holds the docker image used for the CodeBuild jobs ran on Git repo. ECR repo must be on the same account as CloudGenesis itself."
     Type: String
   GithubRepoName:
     Description: The name of the repo (As seen on GitHub.com)
@@ -148,12 +148,12 @@ Resources:
   S3CreateUpdateEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "GitFormation: S3 CreateUpdate Events"
+      DisplayName: "CloudGenesis: S3 CreateUpdate Events"
 
   S3DeleteEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "GitFormation: S3 Delete Events"
+      DisplayName: "CloudGenesis: S3 Delete Events"
 
   S3EventsSNSPolicy:
     Type: AWS::SNS::TopicPolicy
@@ -251,7 +251,7 @@ Resources:
   BuildStatusTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "GitFormation: Pipeline Status"
+      DisplayName: "CloudGenesis: Pipeline Status"
       Subscription:
       - Endpoint:
           Fn::GetAtt:
@@ -262,12 +262,12 @@ Resources:
   S3FileEventsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "GitFormation: S3 File Events (Demuxed)"
+      DisplayName: "CloudGenesis: S3 File Events (Demuxed)"
 
   DLQErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "GitFormation: Errors"
+      DisplayName: "CloudGenesis: Errors"
       Subscription:
       - Endpoint:
           Fn::GetAtt:
@@ -278,7 +278,7 @@ Resources:
   ErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "GitFormation: Errors"
+      DisplayName: "CloudGenesis: Errors"
       Subscription:
       - Endpoint:
           Fn::GetAtt:
@@ -289,7 +289,7 @@ Resources:
   SlackNotificationErrorsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      DisplayName: "GitFormation: Errors"
+      DisplayName: "CloudGenesis: Errors"
       Subscription:
         - Endpoint: !Ref EmailContact
           Protocol: "email-json"
@@ -449,7 +449,7 @@ Resources:
                   - !Sub "arn:aws:s3:::${AWS::StackName}-cfstack-bucket"
                   - !Sub "arn:aws:s3:::${AWS::StackName}-cfstack-bucket/*"
 
-              #Rules for each bucket that a GitFormation Deployer is also allowed to deploy templates from.
+              #Rules for each bucket that a CloudGenesis Deployer is also allowed to deploy templates from.
               - !If
                 - HasExternalS3BucketSupport
                 - Effect: Allow
@@ -516,7 +516,7 @@ Resources:
       Environment:
         Variables:
           CF_EVENTS_TOPIC_NAME: !Sub "${AWS::StackName}-CloudFormationEventsTopic"
-          GITFORMATION_ACCOUNT_ID: !Sub "${AWS::AccountId}"
+          CLOUDGENESIS_ACCOUNT_ID: !Sub "${AWS::AccountId}"
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
           IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName

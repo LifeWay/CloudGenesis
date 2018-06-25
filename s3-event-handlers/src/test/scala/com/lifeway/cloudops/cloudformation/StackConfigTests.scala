@@ -7,7 +7,7 @@ object StackConfigTests extends TestSuite {
   val tests = Tests {
 
     val s3File =
-      S3File("gitformation-demo-bucket",
+      S3File("cloudgenesis-demo-bucket",
              "stacks/my-account-name.123456789/us-east-1/my/stack/path.yaml",
              "some-version-id",
              CreateUpdateEvent)
@@ -119,7 +119,7 @@ object StackConfigTests extends TestSuite {
         val expected = StackConfig(
           "my-stack-name",
           "demo/demo-role.yaml",
-          "gitformation-demo-bucket",
+          "cloudgenesis-demo-bucket",
           "templates/",
           Some(Seq(Tag("Thing", "appA"), Tag("Owner", "ProductOwner"), Tag("Environment", "dev"))),
           Some(Seq(Parameter("Environment", "dev")))
@@ -157,7 +157,7 @@ object StackConfigTests extends TestSuite {
         val expected = StackConfig(
           "some-random-stack",
           "demo/demo-role.yaml",
-          "gitformation-demo-bucket",
+          "cloudgenesis-demo-bucket",
           "templates/",
           Some(Seq(Tag("Thing", "appA"), Tag("Owner", "ProductOwner"), Tag("Environment", "dev"))),
           Some(Seq(Parameter("Environment", "dev")))
