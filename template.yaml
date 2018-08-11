@@ -25,6 +25,7 @@ Metadata:
           - GithubRepoOwner
           - GithubRepoName
           - GitHubToken
+          - WebhookSecretToken
       - Label:
           default: Slack & Email Configuration
         Parameters:
@@ -67,6 +68,8 @@ Metadata:
         default: GitHub Repository Owner
       GitHubToken:
         default: GitHub Personal Access Token
+      WebhookSecretToken:
+        default: GitHub Webhook Auth Token
       ExternalS3BucketPathArns:
         default: Additional S3 Bucket ARN Paths for Templates
 
@@ -136,6 +139,10 @@ Parameters:
     Type: String
     NoEcho: True
     Description: GitHub repository OAuth token - this is a GitHub Personal Access Token. All Git actions will appear as from the owner of this token.
+  WebhookSecretToken:
+    Description: A private token used to authenticate Webhook requests that CodePiepline receives. You generate this secret token and CodePipeline sends it to GitHub for GitHub to store and include on webhook requests.
+    NoEcho: True
+    Type: String
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
@@ -1009,6 +1016,7 @@ Resources:
                 Repo: !Ref GithubRepoName
                 Branch: master
                 OAuthToken: !Ref GitHubToken
+                PollForSourceChanges: false
               OutputArtifacts:
                 - Name: SourceZip
               RunOrder: 1
@@ -1024,3 +1032,17 @@ Resources:
                 ProjectName: !Ref CodeBuildProject
               InputArtifacts:
                 - Name: SourceZip
+
+  PipelineWebhook:
+    Type: "AWS::CodePipeline::Webhook"
+    Properties:
+      AuthenticationConfiguration:
+        SecretToken: !Ref WebhookSecretToken
+      Filters: 
+        - JsonPath: "$.ref"
+          MatchEquals: "refs/heads/{Branch}"
+      Authentication: GITHUB_HMAC
+      TargetPipeline: !Ref Pipeline
+      TargetAction: "GitHubRepo"
+      TargetPipelineVersion: !GetAtt Pipeline.Version
+      RegisterWithThirdParty: True
