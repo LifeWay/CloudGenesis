@@ -145,4 +145,10 @@ trait AmazonSNSTestClient extends AmazonSNS {
       getEndpointAttributesRequest: GetEndpointAttributesRequest): GetEndpointAttributesResult = ???
 
   override def shutdown(): Unit = ???
+  override def listTagsForResource(listTagsForResourceRequest: ListTagsForResourceRequest): ListTagsForResourceResult =
+    ???
+  override def tagResource(tagResourceRequest: _root_.com.amazonaws.services.sns.model.TagResourceRequest)
+    : _root_.com.amazonaws.services.sns.model.TagResourceResult = ???
+  override def untagResource(untagResourceRequest: _root_.com.amazonaws.services.sns.model.UntagResourceRequest)
+    : _root_.com.amazonaws.services.sns.model.UntagResourceResult = ???
 }

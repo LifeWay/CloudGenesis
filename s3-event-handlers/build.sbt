@@ -6,7 +6,7 @@ version := "1.0"
 
 scalaVersion := "2.12.4"
 
-val awsVersion = "1.11.303"
+val awsVersion = "1.11.553"
 
 libraryDependencies ++= Seq(
   "com.amazonaws"            % "aws-lambda-java-core"        % "1.2.0",
