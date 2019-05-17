@@ -431,4 +431,37 @@ class AmazonS3TestClient extends AmazonS3 {
 
   override def getBucketTaggingConfiguration(
       getBucketTaggingConfigurationRequest: GetBucketTaggingConfigurationRequest): BucketTaggingConfiguration = ???
+  override def setPublicAccessBlock(request: SetPublicAccessBlockRequest): SetPublicAccessBlockResult         = ???
+  override def getPublicAccessBlock(request: _root_.com.amazonaws.services.s3.model.GetPublicAccessBlockRequest)
+    : _root_.com.amazonaws.services.s3.model.GetPublicAccessBlockResult = ???
+  override def deletePublicAccessBlock(request: _root_.com.amazonaws.services.s3.model.DeletePublicAccessBlockRequest)
+    : _root_.com.amazonaws.services.s3.model.DeletePublicAccessBlockResult = ???
+  override def getBucketPolicyStatus(request: _root_.com.amazonaws.services.s3.model.GetBucketPolicyStatusRequest)
+    : _root_.com.amazonaws.services.s3.model.GetBucketPolicyStatusResult = ???
+  override def selectObjectContent(selectRequest: _root_.com.amazonaws.services.s3.model.SelectObjectContentRequest)
+    : _root_.com.amazonaws.services.s3.model.SelectObjectContentResult = ???
+  override def setObjectLegalHold(
+      setObjectLegalHoldRequest: _root_.com.amazonaws.services.s3.model.SetObjectLegalHoldRequest)
+    : _root_.com.amazonaws.services.s3.model.SetObjectLegalHoldResult = ???
+  override def getObjectLegalHold(
+      getObjectLegalHoldRequest: _root_.com.amazonaws.services.s3.model.GetObjectLegalHoldRequest)
+    : _root_.com.amazonaws.services.s3.model.GetObjectLegalHoldResult = ???
+  override def setObjectLockConfiguration(
+      setObjectLockConfigurationRequest: _root_.com.amazonaws.services.s3.model.SetObjectLockConfigurationRequest)
+    : _root_.com.amazonaws.services.s3.model.SetObjectLockConfigurationResult = ???
+  override def getObjectLockConfiguration(
+      getObjectLockConfigurationRequest: _root_.com.amazonaws.services.s3.model.GetObjectLockConfigurationRequest)
+    : _root_.com.amazonaws.services.s3.model.GetObjectLockConfigurationResult = ???
+  override def setObjectRetention(
+      setObjectRetentionRequest: _root_.com.amazonaws.services.s3.model.SetObjectRetentionRequest)
+    : _root_.com.amazonaws.services.s3.model.SetObjectRetentionResult = ???
+  override def getObjectRetention(
+      getObjectRetentionRequest: _root_.com.amazonaws.services.s3.model.GetObjectRetentionRequest)
+    : _root_.com.amazonaws.services.s3.model.GetObjectRetentionResult = ???
+  override def download(presignedUrlDownloadRequest: _root_.com.amazonaws.services.s3.model.PresignedUrlDownloadRequest)
+    : _root_.com.amazonaws.services.s3.model.PresignedUrlDownloadResult = ???
+  override def download(presignedUrlDownloadRequest: _root_.com.amazonaws.services.s3.model.PresignedUrlDownloadRequest,
+                        destinationFile: _root_.java.io.File): Unit = ???
+  override def upload(presignedUrlUploadRequest: _root_.com.amazonaws.services.s3.model.PresignedUrlUploadRequest)
+    : _root_.com.amazonaws.services.s3.model.PresignedUrlUploadResult = ???
 }

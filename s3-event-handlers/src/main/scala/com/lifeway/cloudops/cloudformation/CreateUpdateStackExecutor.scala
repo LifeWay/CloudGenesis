@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory
 // $COVERAGE-OFF$
 class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
                                                 iam: IAMCapabilityEnabled,
+                                                autoExpandCapabilityEnabled: AutoExpandCapabilityEnabled,
                                                 cfServiceRoleName: CFServiceRoleName,
                                                 changeSetNamePrefix: ChangeSetNamePrefix,
                                                 trackingTagName: TrackingTagName,
@@ -61,6 +62,7 @@ class CreateUpdateStackExecutorDefaultFunctions(actorSystem: ActorSystem,
         deleteRollbackStackIfExists,
         trackingTagBuilder,
         iam,
+        autoExpandCapabilityEnabled,
         cfServiceRoleName,
         changeSetNamePrefix,
         accountId,
@@ -102,7 +104,7 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
   def execute(
       deleteChangeSetIfExists: (AmazonCloudFormation) => (ChangeSetType, String, String) => Unit Or AutomationError =
         (cf) => deleteExistingChangeSetByNameIfExists(cf),
-      capabilities: (Boolean) => Seq[Capability] = enabled => capabilitiesBuilder(enabled),
+      capabilities: (Boolean, Boolean) => Seq[Capability] = (iam, autoexpand) => capabilitiesBuilder(iam, autoexpand),
       changeSetNameBuild: (ChangeSetNamePrefix) => String = changeSetPrefix => changeSetNameBuilder(changeSetPrefix),
       changeSetType: (AmazonCloudFormation, StackConfig) => ChangeSetType Or AutomationError = determineChangeSetType,
       buildParams: StackConfig => Seq[AWSParam] Or AutomationError = s => buildParameters()(s),
@@ -111,6 +113,7 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
       deleteRollbackStackIfExists: (AmazonCloudFormation, StackName) => Unit Or AutomationError,
       trackingTag: (S3File) => AWSTag,
       iam: IAMCapabilityEnabled,
+      autoExpand: AutoExpandCapabilityEnabled,
       cfServiceRoleName: CFServiceRoleName,
       changeSetNamePrefix: ChangeSetNamePrefix,
       accountId: AccountId,
@@ -133,7 +136,7 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
         val changeSetReq = cfServiceRoleName
           .fold(new CreateChangeSetRequest())(serviceRoleName =>
             new CreateChangeSetRequest().withRoleARN(buildStackServiceRoleArn(serviceRoleName, s3File)))
-          .withCapabilities(capabilities(iam): _*)
+          .withCapabilities(capabilities(iam, autoExpand): _*)
           .withChangeSetName(changeSetName)
           .withChangeSetType(changeSetType)
           .withDescription(s"From CloudGenesis File: ${s3File.key}")
@@ -174,8 +177,17 @@ object CreateUpdateStackExecutor extends StatusCheckerModule {
   def changeSetNameBuilder(namePrefix: ChangeSetNamePrefix): String =
     namePrefix.fold(ChangeSetNamePostfix)(prefix => s"$prefix-$ChangeSetNamePostfix")
 
-  def capabilitiesBuilder(iam: IAMCapabilityEnabled): Seq[Capability] =
-    if (iam) Seq(Capability.CAPABILITY_NAMED_IAM, Capability.CAPABILITY_IAM) else Seq.empty[Capability]
+  def capabilitiesBuilder(iam: IAMCapabilityEnabled, autoExpand: AutoExpandCapabilityEnabled): Seq[Capability] = {
+    val iamCapabilities = Seq(Capability.CAPABILITY_NAMED_IAM, Capability.CAPABILITY_IAM)
+    val autoExpandCapabilities = Seq(Capability.CAPABILITY_AUTO_EXPAND)
+
+    (iam, autoExpand) match {
+      case (true, true) => iamCapabilities ++ autoExpandCapabilities
+      case (true, false) => iamCapabilities
+      case (false, true) => autoExpandCapabilities
+      case _ => Seq.empty[Capability]
+    }
+  }
 
   def trackingTagBuilder(trackingTagName: TrackingTagName, trackingTagValuePrefix: TrackingTagValuePrefix)(
       s3File: S3File): AWSTag = {

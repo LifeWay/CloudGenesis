@@ -46,16 +46,26 @@ object CreateStackExecutorTests extends TestSuite {
     S3File("some-bucket", "stacks/my-account-name.123456789/my/stack/path.yaml", "some-version-id", CreateUpdateEvent)
 
   val tests = Tests {
-    'iamCapabilities - {
+    'capabilitiesBuilder - {
 
       'emptySetWhenNotEnabled - {
-        val set = CreateUpdateStackExecutor.capabilitiesBuilder(false)
+        val set = CreateUpdateStackExecutor.capabilitiesBuilder(false, false)
         assert(set == Seq.empty[Capability])
       }
 
-      'bothIamCapabilitiesWhenEnabled - {
-        val set = CreateUpdateStackExecutor.capabilitiesBuilder(true)
+      'bothIamCapabilitiesWhenEnabledAndAutoExpandFalse - {
+        val set = CreateUpdateStackExecutor.capabilitiesBuilder(true, false)
         assert(set == Seq(Capability.CAPABILITY_NAMED_IAM, Capability.CAPABILITY_IAM))
+      }
+
+      'onlyAutoExpandWhenEnabledAndIAMOff - {
+        val set = CreateUpdateStackExecutor.capabilitiesBuilder(false, true)
+        assert(set == Seq(Capability.CAPABILITY_AUTO_EXPAND))
+      }
+
+      'bothIamAndAutoExpand - {
+        val set = CreateUpdateStackExecutor.capabilitiesBuilder(true, true)
+        assert(set == Seq(Capability.CAPABILITY_NAMED_IAM, Capability.CAPABILITY_IAM, Capability.CAPABILITY_AUTO_EXPAND))
       }
     }
 
@@ -481,7 +491,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
-            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
+            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true, true).map(_.toString).asJava) &&
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
@@ -503,7 +513,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          capabilities = (_, _) => CreateUpdateStackExecutor.capabilitiesBuilder(true, true),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -511,6 +521,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-name"),
           None,
@@ -539,7 +550,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
-            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
+            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true, false).map(_.toString).asJava) &&
                 req.getRoleARN.equals("arn:aws:iam::123456789:role/some-role-name") &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
@@ -561,7 +572,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          capabilities = (_, _) => CreateUpdateStackExecutor.capabilitiesBuilder(true, false),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -569,6 +580,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-name"),
           None,
@@ -581,7 +593,7 @@ object CreateStackExecutorTests extends TestSuite {
       'returnGoodWhenSuccessfulWithoutServiceRole - {
         val cfClient = new CloudFormationTestClient {
           override def createChangeSet(req: CreateChangeSetRequest): CreateChangeSetResult =
-            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true).map(_.toString).asJava) &&
+            if (req.getCapabilities.equals(CreateUpdateStackExecutor.capabilitiesBuilder(true, false).map(_.toString).asJava) &&
                 Option(req.getRoleARN).isEmpty &&
                 req.getChangeSetName.equals(s"my-change-set-name") &&
                 req.getChangeSetType.equals(ChangeSetType.CREATE.toString) &&
@@ -603,7 +615,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          capabilities = (_, _) => CreateUpdateStackExecutor.capabilitiesBuilder(true, false),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -611,6 +623,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           None,
           None,
@@ -631,7 +644,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => Seq.empty,
+          capabilities = (_, _) => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -639,6 +652,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Bad(StackError("boom")),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-arn"),
           None,
@@ -659,7 +673,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Bad(StackError("delete go boom")),
-          capabilities = _ => Seq.empty,
+          capabilities = (_, _) => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -667,6 +681,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-arn"),
           None,
@@ -687,7 +702,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => Seq.empty,
+          capabilities = (_, _) => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Bad(StackError("boom")),
           buildParams = (_) => Good(parameters),
@@ -695,6 +710,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-arn"),
           None,
@@ -715,7 +731,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => CreateUpdateStackExecutor.capabilitiesBuilder(true),
+          capabilities = (_, _) => CreateUpdateStackExecutor.capabilitiesBuilder(true, false),
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -723,6 +739,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Bad(StackError("Failed to delete existing rollback-stack")),
           _ => autoTag,
+          false,
           false,
           None,
           None,
@@ -743,7 +760,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => Seq.empty,
+          capabilities = (_, _) => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -751,6 +768,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-arn"),
           None,
@@ -773,7 +791,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => Seq.empty,
+          capabilities = (_, _) => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Bad(StackError("params boom")),
@@ -781,6 +799,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-arn"),
           None,
@@ -804,7 +823,7 @@ object CreateStackExecutorTests extends TestSuite {
 
         val result = CreateUpdateStackExecutor.execute(
           deleteChangeSetIfExists = (_) => (_, _, _) => Good(()),
-          capabilities = _ => Seq.empty,
+          capabilities = (_, _) => Seq.empty,
           changeSetNameBuild = _ => "my-change-set-name",
           changeSetType = (_, _) => Good(ChangeSetType.CREATE),
           buildParams = (_) => Good(parameters),
@@ -812,6 +831,7 @@ object CreateStackExecutorTests extends TestSuite {
         )((_, _, _, _, _) => Good(()),
           (_, _) => Good(()),
           _ => autoTag,
+          false,
           false,
           Some("some-role-arn"),
           None,

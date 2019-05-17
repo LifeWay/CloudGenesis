@@ -122,4 +122,17 @@ trait CloudFormationTestClient extends AmazonCloudFormation {
 
   override def describeStackSetOperation(
       describeStackSetOperationRequest: DescribeStackSetOperationRequest): DescribeStackSetOperationResult = ???
+
+  override def describeStackDriftDetectionStatus(
+      describeStackDriftDetectionStatusRequest: DescribeStackDriftDetectionStatusRequest)
+    : DescribeStackDriftDetectionStatusResult = ???
+  override def describeStackResourceDrifts(
+      describeStackResourceDriftsRequest: _root_.com.amazonaws.services.cloudformation.model.DescribeStackResourceDriftsRequest)
+    : _root_.com.amazonaws.services.cloudformation.model.DescribeStackResourceDriftsResult = ???
+  override def detectStackDrift(
+      detectStackDriftRequest: _root_.com.amazonaws.services.cloudformation.model.DetectStackDriftRequest)
+    : _root_.com.amazonaws.services.cloudformation.model.DetectStackDriftResult = ???
+  override def detectStackResourceDrift(
+      detectStackResourceDriftRequest: _root_.com.amazonaws.services.cloudformation.model.DetectStackResourceDriftRequest)
+    : _root_.com.amazonaws.services.cloudformation.model.DetectStackResourceDriftResult = ???
 }
