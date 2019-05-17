@@ -14,6 +14,7 @@ Metadata:
         Parameters:
           - AccountIds
           - AllowIAMCapabilities
+          - AllowAutoExpandCapability
           - CFDeployerRoleName
           - CFServiceRoleName
           - SSMPath
@@ -44,6 +45,8 @@ Metadata:
         default: AWS Account ID's
       AllowIAMCapabilities:
         default: CloudFormation IAM Capabilities Enabled?
+      AllowAutoExpandCapability:
+        default: CloudFormation Auto Expand Capability Enabled?
       SSMPath:
         default: SSM Path Prefix
       SlackChannel:
@@ -76,6 +79,13 @@ Metadata:
 Parameters:
   AllowIAMCapabilities:
     Description: "CloudFormation has an IAM safe guard built in. If this is false, no IAM resources can be created even if the policy arns allow it"
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+  AllowAutoExpandCapability:
+    Description: "CloudFormation requires you to indicate if you want to allow it to Auto Expand macros "
     Type: String
     Default: "false"
     AllowedValues:
@@ -525,6 +535,7 @@ Resources:
           CF_EVENTS_TOPIC_NAME: !Sub "${AWS::StackName}-CloudFormationEventsTopic"
           CLOUDGENESIS_ACCOUNT_ID: !Sub "${AWS::AccountId}"
           IAM_CAPABILITIES_ENABLED: !Ref AllowIAMCapabilities
+          AUTO_EXPAND_CAPABILITY_ENABLED: !Ref AllowAutoExpandCapability
           SEMANTIC_STACK_NAMING: !Ref SemanticStackNaming
           IAM_ASSUME_ROLE_NAME: !Ref CFDeployerRoleName
           SNS_ERROR_TOPIC_ARN: !Ref ErrorsTopic
@@ -809,7 +820,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt CFNotifyRole.Arn
       CodeUri: ./codebuild-notify/
-      Runtime: nodejs6.10
+      Runtime: nodejs10.x
       Timeout: 300
       Environment:
         Variables:
@@ -818,7 +829,7 @@ Resources:
       DeadLetterQueue:
         Type: SNS
         TargetArn: !Ref SlackNotificationErrorsTopic
-        
+
   CodeBuildErrorInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -1038,7 +1049,7 @@ Resources:
     Properties:
       AuthenticationConfiguration:
         SecretToken: !Ref WebhookSecretToken
-      Filters: 
+      Filters:
         - JsonPath: "$.ref"
           MatchEquals: "refs/heads/{Branch}"
       Authentication: GITHUB_HMAC

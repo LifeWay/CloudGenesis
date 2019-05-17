@@ -20,10 +20,12 @@ import scala.collection.JavaConverters._
 // $COVERAGE-OFF$
 class LambdaStackHandler {
 
-  val stsClient: AWSSecurityTokenService              = AWSSecurityTokenServiceClientBuilder.defaultClient()
-  val s3Client: AmazonS3                              = AmazonS3ClientBuilder.defaultClient()
-  val snsClient: AmazonSNS                            = AmazonSNSClientBuilder.defaultClient()
-  val iamCapabilities: IAMCapabilityEnabled           = sys.env.get("IAM_CAPABILITIES_ENABLED").exists(_.toBoolean)
+  val stsClient: AWSSecurityTokenService    = AWSSecurityTokenServiceClientBuilder.defaultClient()
+  val s3Client: AmazonS3                    = AmazonS3ClientBuilder.defaultClient()
+  val snsClient: AmazonSNS                  = AmazonSNSClientBuilder.defaultClient()
+  val iamCapabilities: IAMCapabilityEnabled = sys.env.get("IAM_CAPABILITIES_ENABLED").exists(_.toBoolean)
+  val autoExpandCapability: AutoExpandCapabilityEnabled =
+    sys.env.get("AUTO_EXPAND_CAPABILITY_ENABLED").exists(_.toBoolean)
   val semanticStackNaming: SemanticStackNamingEnabled = sys.env.get("SEMANTIC_STACK_NAMING").forall(_.toBoolean)
   val snsExternalNotifyTopicArn: ExternalNotifySNSArn = sys.env.get("SNS_EXTERNAL_TOPIC_NOTIFY_ARN")
   val cfServiceRoleName: CFServiceRoleName            = sys.env.get("IAM_CF_SERVICE_ROLE_NAME")
@@ -43,6 +45,7 @@ class LambdaStackHandler {
       semanticStackNaming,
       system,
       iamCapabilities,
+      autoExpandCapability,
       cfServiceRoleName,
       changeSetNamePrefix,
       trackingTagName,
@@ -127,6 +130,7 @@ object LambdaStackHandler {
       semanticStackNaming: SemanticStackNamingEnabled,
       system: ActorSystem,
       iamCapabilities: IAMCapabilityEnabled,
+      autoExpandCapabilityEnabled: AutoExpandCapabilityEnabled,
       cFServiceRoleName: CFServiceRoleName,
       changeSetNamePrefix: ChangeSetNamePrefix,
       trackingTagName: TrackingTagName,
@@ -139,14 +143,17 @@ object LambdaStackHandler {
       accountId          <- envFetch("CLOUDGENESIS_ACCOUNT_ID")
     } yield {
       val executors: Map[EventType, StackExecutor] = Map(
-        CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(system,
-                                                                           iamCapabilities,
-                                                                           cFServiceRoleName,
-                                                                           changeSetNamePrefix,
-                                                                           trackingTagName,
-                                                                           trackingTagValuePrefix,
-                                                                           accountId,
-                                                                           snsEventsTopicName),
+        CreateUpdateEvent -> new CreateUpdateStackExecutorDefaultFunctions(
+          system,
+          iamCapabilities,
+          autoExpandCapabilityEnabled,
+          cFServiceRoleName,
+          changeSetNamePrefix,
+          trackingTagName,
+          trackingTagValuePrefix,
+          accountId,
+          snsEventsTopicName
+        ),
         DeletedEvent -> DeleteStackExecutorDefaultFunctions
       )
       new EventProcessorDefaultFunctions(stsClient,
