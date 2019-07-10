@@ -76,6 +76,8 @@ Metadata:
         default: GitHub Webhook Auth Token
       ExternalS3BucketPathArns:
         default: Additional S3 Bucket ARN Paths for Templates
+      S3FileEventHandlerReservedConcurrency:
+        default: Reserved Concurrency Configuration for S3FileEventHandler.
 
 Parameters:
   AllowIAMCapabilities:
