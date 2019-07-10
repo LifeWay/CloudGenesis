@@ -40,6 +40,7 @@ Metadata:
           - ExternalNotificationSNSArn
           - TrackingTagPrefix
           - ExternalS3BucketPathArns
+          - S3FileEventHandlerReservedConcurrency
     ParameterLabels:
       AccountIds:
         default: AWS Account ID's
