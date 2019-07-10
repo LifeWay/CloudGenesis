@@ -153,6 +153,10 @@ Parameters:
     Description: A private token used to authenticate Webhook requests that CodePiepline receives. You generate this secret token and CodePipeline sends it to GitHub for GitHub to store and include on webhook requests.
     NoEcho: True
     Type: String
+  S3FileEventHandlerReservedConcurrency:
+    Description: The reserved concurrency for the S3FileEventHandler functions. Used to avoid cloud formation API throttling.
+    Type: Number
+    Default: 10
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
@@ -527,6 +531,7 @@ Resources:
       MemorySize: 1536
       Timeout: 300
       Tracing:  Active
+      ReservedConcurrentExecutions: !Ref S3FileEventHandlerReservedConcurrency
       DeadLetterQueue:
         Type: SNS
         TargetArn: !Ref ErrorsTopic # DLQ should be rarely thrown, msg won't be pretty formatted at this handler, but it will print
