@@ -77,7 +77,7 @@ Metadata:
       ExternalS3BucketPathArns:
         default: Additional S3 Bucket ARN Paths for Templates
       S3FileEventHandlerReservedConcurrency:
-        default: Reserved Concurrency Configuration for S3FileEventHandler.
+        default: Concurrency for number of stacks commands sent at a time to CloudFormation.
 
 Parameters:
   AllowIAMCapabilities:
