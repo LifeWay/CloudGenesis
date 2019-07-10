@@ -156,7 +156,7 @@ Parameters:
   S3FileEventHandlerReservedConcurrency:
     Description: The reserved concurrency for the S3FileEventHandler functions. Used to avoid cloud formation API throttling.
     Type: Number
-    Default: 10
+    Default: 1
 
 Conditions:
   HasExternalNotificationSNS: !Not [!Equals [!Ref ExternalNotificationSNSArn, ""]]
