@@ -1,7 +1,6 @@
 import json
 import shlex
-import urllib
-import urllib2
+import urllib.request
 import re
 import os
 
@@ -78,9 +77,9 @@ def lambda_handler(event, context):
         return
 
     message = get_stack_update_message(cf_message, channel)
-    data = json.dumps(message)
-    req = urllib2.Request(webhook, data, {'Content-Type': 'application/json'})
-    urllib2.urlopen(req)
+    data = json.dumps(message).encode("utf-8")
+    req = urllib.request.Request(webhook, data, {'Content-Type': 'application/json'})
+    urllib.request.urlopen(req)
 
 
 def get_stack_update_message(cf_message, channel):

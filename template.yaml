@@ -601,7 +601,7 @@ Resources:
       Handler: lambda_notify.lambda_handler
       Role: !GetAtt CFNotifyRole.Arn
       CodeUri: ./cf-notify/cf-notify.zip
-      Runtime: python2.7
+      Runtime: python3.9
       Timeout: 300
       DeadLetterQueue:
         Type: SNS
@@ -774,7 +774,7 @@ Resources:
       Handler: sns_error.dlq_lambda_handler
       Role: !GetAtt CFNotifyRole.Arn
       CodeUri: ./sns-notify/sns-error.zip
-      Runtime: python2.7
+      Runtime: python3.9
       Timeout: 300
       Environment:
         Variables:
@@ -801,7 +801,7 @@ Resources:
       Handler: sns_error.error_lambda_handler
       Role: !GetAtt CFNotifyRole.Arn
       CodeUri: ./sns-notify/sns-error.zip
-      Runtime: python2.7
+      Runtime: python3.9
       Timeout: 300
       Environment:
         Variables:
