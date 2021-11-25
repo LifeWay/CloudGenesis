@@ -7,6 +7,7 @@ import unittest
 def dlq_lambda_handler(event, context):
     for record in event['Records']:
         messageRecords = json.loads(record['Sns']['Message'])
+
         for rec in messageRecords['Records']:
             msg = build_slack_message(rec, event)
             send_to_slack(msg)
@@ -36,6 +37,7 @@ def build_message(attachments, event):
         'channel': slack.CHANNEL,
         'attachments': attachments
     }
+
     return message
 
 def build_attachment(rec):

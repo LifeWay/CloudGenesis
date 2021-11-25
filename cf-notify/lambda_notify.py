@@ -69,10 +69,12 @@ def lambda_handler(event, context):
     cf_message = dict(token.split('=', 1) for token in shlex.split(sns_message))
 
     # ignore messages that do not pertain to the Stack as a whole, unless they are error events that give valuable info
+
     if not cf_message['ResourceType'] == 'AWS::CloudFormation::Stack' and cf_message['ResourceStatus'] not in ERROR_EVENTS:
         return
 
     # ignore events we don't care about.
+
     if cf_message['ResourceStatus'] not in EVENTS_FOR_SLACK:
         return
 
@@ -111,6 +113,7 @@ def get_stack_update_attachment(cf_message):
 
 def get_stack_region(stack_id):
     regex = re.compile('arn:aws:cloudformation:(?P<region>[a-z]{2}-[a-z]{4,9}-[1-3]{1})')
+
     return regex.match(stack_id).group('region')
 
 def get_stack_url(stack_id):
