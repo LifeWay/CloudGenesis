@@ -13,10 +13,12 @@ def build_message(msg):
         'icon_emoji': ':cloud:',
         'username': 'CloudGenesis',
         'channel': slack.CHANNEL,
-        'attachments': [{
-            'fallback': msg,
-            'text': msg,
-            'color': 'danger'
+        'blocks': [{
+            'type': 'section',
+            'text': {
+                'type': 'mrkdwn',
+                'text': msg
+            }
         }]
     }
 
