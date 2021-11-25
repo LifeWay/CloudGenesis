@@ -9,7 +9,7 @@ import os
 # From: https://github.com/guardian/cf-notify
 #
 
-# Mapping CloudFormation status codes to colors for Slack message attachments
+# Mapping CloudFormation status codes to colors for Slack message blocks
 # Status codes from http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-describing-stacks.html
 STATUS_COLORS = {
     'CREATE_COMPLETE': 'good',
@@ -89,12 +89,10 @@ def get_stack_update_message(cf_message, channel):
         'icon_emoji': ':cloud:',
         'channel': channel,
         'username': 'CloudGenesis',
-        'attachments': [
-            get_stack_update_attachment(cf_message)
-        ]
+        'blocks': get_stack_update_blocks(cf_message)
     }
 
-def get_stack_update_attachment(cf_message):
+def get_stack_update_blocks(cf_message):
     title = 'Stack <{link}|{stack}> has entered status: {status}'.format(
         link=get_stack_url(cf_message['StackId']),
         stack=cf_message['StackName'],
@@ -104,12 +102,22 @@ def get_stack_update_attachment(cf_message):
         if 'ResourceStatusReason' in cf_message:
             title = title + "\n" + cf_message['ResourceStatusReason']
 
-    return {
-        'fallback': title,
-        'title': title,
-        'text': cf_message['StackId'],
-        'color': STATUS_COLORS.get(cf_message['ResourceStatus'], '#000000'),
-    }
+    return [
+        {
+            'type': 'section',
+            'text': {
+                'type': 'mrkdwn',
+                'text': title
+            }
+        },
+        {
+            'type': 'section',
+            'text': {
+                'type': 'mrkdwn',
+                'text': cf_message['StackId'],
+            }
+        }
+    ]
 
 def get_stack_region(stack_id):
     regex = re.compile('arn:aws:cloudformation:(?P<region>[a-z]{2}-[a-z]{4,9}-[1-3]{1})')
