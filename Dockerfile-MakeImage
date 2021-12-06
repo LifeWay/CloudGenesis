@@ -10,7 +10,7 @@ RUN yum -y install java-1.8.0 && \
     yum -y install sbt
 
 # PYTHON
-RUN yum -y install python python-virtualenv python-pip
+RUN yum -y install python3 python3-virtualenv python3-pip
 
 # NODE & YARN
 RUN rpm --import https://rpm.nodesource.com/pub/el/NODESOURCE-GPG-SIGNING-KEY-EL && \

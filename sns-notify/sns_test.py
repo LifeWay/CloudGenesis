@@ -2,8 +2,14 @@ import unittest
 import sns_dlq_error
 import json
 import os
+import sys
 
 class SNSTest(unittest.TestCase):
+
+    def setUp(self):
+      if not sys.warnoptions:
+        import warnings
+        warnings.simplefilter("ignore")
 
     def test_basic_error(self):
         jsEvent = json.load(open('./test-files/dlq-error.json'))
