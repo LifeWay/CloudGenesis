@@ -9,7 +9,7 @@ export AWS_REGION=us-east-1
 (cd cf-notify/; zip cf-notify.zip lambda_notify.py; cd -)
 
 export WEBHOOK=testHook CHANNEL=testChannel
-(cd sns-notify/; python sns_test.py; cd -)
+(cd sns-notify/; python3 sns_test.py; cd -)
 unset WEBHOOK CHANNEL
 (cd sns-notify/; zip sns-error.zip sns_error.py slack.py; cd -)
 

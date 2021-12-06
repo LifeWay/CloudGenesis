@@ -1,5 +1,6 @@
 import json
-import urllib2
+import urllib
+import urllib.request
 import slack
 
 def error_lambda_handler(event, context):
@@ -20,8 +21,8 @@ def build_message(msg):
     }
 
 def send_to_slack(message):
-    data = json.dumps(message)
-    req = urllib2.Request(slack.WEBHOOK, data, {'Content-Type': 'application/json'})
-    urllib2.urlopen(req)
+    data = json.dumps(message).encode("utf-8")
+    req = urllib.request.Request(slack.WEBHOOK, data, {'Content-Type': 'application/json'})
+    urllib.request.urlopen(req)
 
 

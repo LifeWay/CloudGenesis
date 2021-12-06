@@ -1,5 +1,5 @@
 import json
-import urllib2
+import urllib.request
 import slack
 import os
 import unittest
@@ -7,6 +7,7 @@ import unittest
 def dlq_lambda_handler(event, context):
     for record in event['Records']:
         messageRecords = json.loads(record['Sns']['Message'])
+
         for rec in messageRecords['Records']:
             msg = build_slack_message(rec, event)
             send_to_slack(msg)
@@ -22,9 +23,9 @@ def build_slack_message(record, event):
     return build_message(attachments, event)
 
 def send_to_slack(message):
-    data = json.dumps(message)
-    req = urllib2.Request(slack.WEBHOOK, data, {'Content-Type': 'application/json'})
-    urllib2.urlopen(req)
+    data = json.dumps(message).encode("utf-8")
+    req = urllib.request.Request(slack.WEBHOOK, data, {'Content-Type': 'application/json'})
+    urllib.request.urlopen(req)
         
 
 def build_message(attachments, event):
@@ -36,6 +37,7 @@ def build_message(attachments, event):
         'channel': slack.CHANNEL,
         'attachments': attachments
     }
+
     return message
 
 def build_attachment(rec):
