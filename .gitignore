@@ -8,6 +8,16 @@ templates-sync
 stacks-to-delete.txt
 templates-to-delete.txt
 
+#CF GitOps
+cf-gitops-scala-common/project/project
+cf-gitops-scala-common/project/target
+cf-gitops-scala-common/target
+
+#S3 Event Debux
+s3-event-demux/project/project
+s3-event-demux/project/target
+s3-event-demux/target
+
 #S3 Event Handlers
 s3-event-handlers/project/project
 s3-event-handlers/project/target
