@@ -27,11 +27,11 @@ def send_to_slack(message):
     data = json.dumps(message).encode("utf-8")
     req = urllib.request.Request(slack.WEBHOOK, data, {'Content-Type': 'application/json'})
     urllib.request.urlopen(req)
-        
+
 
 def build_message(blocks, event):
     blocks.append(build_custom_error_message_block(event))
-    
+
     message = {
         'icon_emoji': ':cloud:',
         'username': 'CloudGenesis',

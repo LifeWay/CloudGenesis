@@ -102,6 +102,7 @@ def get_stack_update_blocks(cf_message):
         if 'ResourceStatusReason' in cf_message:
             title = title + "\n" + cf_message['ResourceStatusReason']
 
+
     return [
         {
             'type': 'section',
