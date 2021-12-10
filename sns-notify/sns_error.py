@@ -9,6 +9,8 @@ def error_lambda_handler(event, context):
         send_to_slack(msg)
 
 def build_message(msg):
+    text = '❌ {msg}'.format(msg=msg)
+
     return {
         'icon_emoji': ':cloud:',
         'username': 'CloudGenesis',
@@ -17,7 +19,7 @@ def build_message(msg):
             'type': 'section',
             'text': {
                 'type': 'mrkdwn',
-                'text': msg
+                'text': text
             }
         }]
     }

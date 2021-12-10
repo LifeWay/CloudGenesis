@@ -45,12 +45,13 @@ def build_block(rec):
     event_name = rec['eventName']
     bucket = rec['s3']['bucket']['name']
     key = rec['s3']['object']['key']
-    title = 'Stack Error at: {object}'.format(object=bucket+key)
+    text = '❌ Stack Error at: {object}'.format(object=bucket+key)
+
     return {
         'type': 'section',
         'text': {
             'type': 'mrkdwn',
-            'text': title
+            'text': text
         }
     }
 
@@ -59,6 +60,9 @@ def build_custom_error_message_block(rec):
         title = rec['Records'][0]['Sns']['MessageAttributes']['ErrorMessage']['Value']
     except KeyError:
         title = "Stack Error"
+
+    text = '❌ {title}'.format(title=title)
+
     return {
         'type': 'section',
         'text': {
