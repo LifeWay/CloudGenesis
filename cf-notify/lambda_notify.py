@@ -10,27 +10,27 @@ import os
 # From: https://github.com/guardian/cf-notify
 #
 
-# Mapping CloudFormation status codes to colors for Slack message attachments
+# Mapping CloudFormation status codes to colors for Slack message blocks
 # Status codes from http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-describing-stacks.html
-STATUS_COLORS = {
-    'CREATE_COMPLETE': 'good',
-    'CREATE_IN_PROGRESS': 'good',
-    'CREATE_FAILED': 'danger',
-    'DELETE_COMPLETE': 'good',
-    'DELETE_FAILED': 'danger',
-    'DELETE_IN_PROGRESS': 'good',
-    'REVIEW_IN_PROGRESS': 'good',
-    'ROLLBACK_COMPLETE': 'warning',
-    'ROLLBACK_FAILED': 'danger',
-    'ROLLBACK_IN_PROGRESS': 'warning',
-    'UPDATE_COMPLETE': 'good',
-    'UPDATE_COMPLETE_CLEANUP_IN_PROGRESS': 'good',
-    'UPDATE_IN_PROGRESS': 'good',
-    'UPDATE_ROLLBACK_COMPLETE': 'warning',
-    'UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS': 'warning',
-    'UPDATE_ROLLBACK_FAILED': 'danger',
-    'UPDATE_ROLLBACK_IN_PROGRESS': 'warning',
-    'DELETE_FAILED': 'danger'
+STATUS_EMOJIS = {
+    'CREATE_COMPLETE': '✅',
+    'CREATE_IN_PROGRESS': '✅',
+    'CREATE_FAILED': '❌',
+    'DELETE_COMPLETE': '✅',
+    'DELETE_FAILED': '❌',
+    'DELETE_IN_PROGRESS': '✅',
+    'REVIEW_IN_PROGRESS': '✅',
+    'ROLLBACK_COMPLETE': '⚠️',
+    'ROLLBACK_FAILED': '❌',
+    'ROLLBACK_IN_PROGRESS': '⚠️',
+    'UPDATE_COMPLETE': '✅',
+    'UPDATE_COMPLETE_CLEANUP_IN_PROGRESS': '✅',
+    'UPDATE_IN_PROGRESS': '✅',
+    'UPDATE_ROLLBACK_COMPLETE': '⚠️',
+    'UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS': '⚠️',
+    'UPDATE_ROLLBACK_FAILED': '❌',
+    'UPDATE_ROLLBACK_IN_PROGRESS': '⚠️',
+    'DELETE_FAILED': '❌'
 }
 
 # List of stack status events that will emit to slack
@@ -90,13 +90,12 @@ def get_stack_update_message(cf_message, channel):
         'icon_emoji': ':cloud:',
         'channel': channel,
         'username': 'CloudGenesis',
-        'attachments': [
-            get_stack_update_attachment(cf_message)
-        ]
+        'blocks': get_stack_update_blocks(cf_message)
     }
 
-def get_stack_update_attachment(cf_message):
-    title = 'Stack <{link}|{stack}> has entered status: {status}'.format(
+def get_stack_update_blocks(cf_message):
+    title = '{emoji} Stack <{link}|{stack}> has entered status: {status}'.format(
+        emoji=STATUS_EMOJIS.get(cf_message['ResourceStatus'], ''),
         link=get_stack_url(cf_message['StackId']),
         stack=cf_message['StackName'],
         status=cf_message['ResourceStatus'])
@@ -105,12 +104,23 @@ def get_stack_update_attachment(cf_message):
         if 'ResourceStatusReason' in cf_message:
             title = title + "\n" + cf_message['ResourceStatusReason']
 
-    return {
-        'fallback': title,
-        'title': title,
-        'text': cf_message['StackId'],
-        'color': STATUS_COLORS.get(cf_message['ResourceStatus'], '#000000'),
-    }
+
+    return [
+        {
+            'type': 'section',
+            'text': {
+                'type': 'mrkdwn',
+                'text': title
+            }
+        },
+        {
+            'type': 'section',
+            'text': {
+                'type': 'mrkdwn',
+                'text': cf_message['StackId'],
+            }
+        }
+    ]
 
 def get_stack_region(stack_id):
     regex = re.compile('arn:aws:cloudformation:(?P<region>[a-z]{2}-[a-z]{4,9}-[1-3]{1})')
