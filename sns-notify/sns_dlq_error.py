@@ -16,49 +16,57 @@ def build_slack_message(record, event):
     #iterate through nested messages
     topMessage = json.loads(record['Sns']['Message'])
     nestedMessages = topMessage['Records']
-    attachments = []
-    for message in nestedMessages:
-        attachments.append(build_attachment(message))
+    blocks = []
 
-    return build_message(attachments, event)
+    for message in nestedMessages:
+        blocks.append(build_block(message))
+
+    return build_message(blocks, event)
 
 def send_to_slack(message):
     data = json.dumps(message).encode("utf-8")
     req = urllib.request.Request(slack.WEBHOOK, data, {'Content-Type': 'application/json'})
     urllib.request.urlopen(req)
-        
 
-def build_message(attachments, event):
-    attachments.append(build_custom_error_message_attachment(event))
-    
+
+def build_message(blocks, event):
+    blocks.append(build_custom_error_message_block(event))
+
     message = {
         'icon_emoji': ':cloud:',
         'username': 'CloudGenesis',
         'channel': slack.CHANNEL,
-        'attachments': attachments
+        'blocks': blocks
     }
 
     return message
 
-def build_attachment(rec):
+def build_block(rec):
     event_name = rec['eventName']
     bucket = rec['s3']['bucket']['name']
     key = rec['s3']['object']['key']
-    title = 'Stack Error at: {object}'.format(object=bucket+key)
+    text = '❌ Stack Error at: {object}'.format(object=bucket+key)
+
     return {
-        'fallback': title,
-        'text': title,
-        'color': 'danger'
+        'type': 'section',
+        'text': {
+            'type': 'mrkdwn',
+            'text': text
+        }
     }
 
-def build_custom_error_message_attachment(rec):
+def build_custom_error_message_block(rec):
     try:
         title = rec['Records'][0]['Sns']['MessageAttributes']['ErrorMessage']['Value']
     except KeyError:
-        return {'title': "Stack Error", 'color': 'danger'}
-    
+        title = "Stack Error"
+
+    text = '❌ {title}'.format(title=title)
+
     return {
-        'fallback': title,
-        'text': title,
-        'color': 'danger'
+        'type': 'section',
+        'text': {
+            'type': 'mrkdwn',
+            'text': text
+        }
     }
