@@ -1,5 +1,6 @@
 import json
 import shlex
+import urllib.parse
 import urllib.request
 import re
 import os
@@ -124,4 +125,4 @@ def get_stack_url(stack_id):
     }
 
     return ('https://{region}.console.aws.amazon.com/cloudformation/home?region={region}#/stack/detail?{query}'
-            .format(region=region, query=urllib.urlencode(query)))
+            .format(region=region, query=urllib.parse.urlencode(query)))
